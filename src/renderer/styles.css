@@ -4,6 +4,11 @@
 	box-sizing: border-box;
 }
 
+/* hidden属性优先级最低，会被后面的display规则覆盖，这里统一保证带hidden的元素不显示 */
+[hidden] {
+	display: none !important;
+}
+
 html,
 body {
 	margin: 0;

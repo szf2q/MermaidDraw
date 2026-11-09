@@ -326,21 +326,63 @@ function clearHistory() {
 }
 
 /**
+ * 记录上次打开文件所在目录，下次打开对话框以此为默认路径。
+ * 与历史记录共用同一条写入链，避免两次读改写并发执行时互相覆盖。
+ * @param {string} dir 目录绝对路径
+ * @returns {Promise<void>} 保存结束；写入失败只记录日志，不影响本次打开
+ */
+function setLastOpenDir(dir) {
+	historyWriteChain = historyWriteChain.then(async () => {
+		const settings = await readSettings();
+		settings.lastOpenDir = dir;
+		await writeSettings(settings);
+	}).catch((error) => {
+		console.error(`保存打开目录失败: ${error.message}`);
+	});
+	return historyWriteChain;
+}
+
+/**
+ * 取上次打开文件所在目录。
+ * @returns {Promise<string|null>} 可用目录；未记录或目录已删除时返回null
+ */
+async function getLastOpenDir() {
+	const settings = await readSettings();
+	const dir = settings.lastOpenDir;
+	if (typeof dir !== 'string' || !dir) {
+		return null;
+	}
+	try {
+		const stat = await fs.promises.stat(dir);
+		return stat.isDirectory() ? dir : null;
+	} catch (error) {
+		// 目录被删除或移动后不能再作为defaultPath，回退到系统默认位置
+		return null;
+	}
+}
+
+/**
  * 注册渲染进程IPC。
  */
 function registerIpc() {
 	ipcMain.handle('dialog:open', async () => {
-		const result = await dialog.showOpenDialog(mainWindow, {
+		const options = {
 			title: '打开Mermaid或Drawio文件',
 			properties: ['openFile'],
 			filters: [
 				{name: 'Mermaid与Drawio文件', extensions: ['mmd', 'mermaid', 'drawio', 'dio']},
 				{name: '全部文件', extensions: ['*']}
 			]
-		});
+		};
+		const lastDir = await getLastOpenDir();
+		if (lastDir) {
+			options.defaultPath = lastDir;
+		}
+		const result = await dialog.showOpenDialog(mainWindow, options);
 		if (result.canceled || result.filePaths.length === 0) {
 			return {ok: false, canceled: true};
 		}
+		await setLastOpenDir(path.dirname(result.filePaths[0]));
 		return {ok: true, filePath: result.filePaths[0]};
 	});
 

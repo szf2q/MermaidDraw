@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+	<meta charset="utf-8">
+	<title>可视化编辑器</title>
+	<link rel="stylesheet" href="editor.css">
+	<!-- drawio viewer脚本在加载时读取这些全局路径，必须在其之前赋值，全部指向本地vendor避免联网。 -->
+	<script>
+		window.STYLE_PATH = 'app://app/vendor/drawio/styles';
+		window.STENCIL_PATH = 'app://app/vendor/drawio/stencils';
+		window.SHAPES_PATH = 'app://app/vendor/drawio/shapes';
+		window.PROXY_URL = '';
+		window.mxLoadStylesheets = false;
+		window.mxBasePath = 'app://app/vendor/drawio/mxgraph/';
+	</script>
+</head>
+<body>
+	<div class="app" id="app">
+		<!-- 第一行工具栏：文件操作、撤销重做、缩放与页面切换 -->
+		<header class="toolbar">
+			<div class="group doc-info">
+				<span class="doc-title" id="doc-title">未命名</span>
+				<span class="dirty" id="dirty-mark" hidden>未保存</span>
+				<span class="source-tag" id="source-tag" hidden></span>
+			</div>
+			<div class="group">
+				<button id="btn-save" class="primary" title="保存 (Ctrl+S)">保存</button>
+				<button id="btn-save-as" title="另存为drawio文件">另存为</button>
+				<button id="btn-png" title="按当前页导出PNG">导出PNG</button>
+			</div>
+			<div class="group">
+				<button id="btn-undo" title="撤销 (Ctrl+Z)">撤销</button>
+				<button id="btn-redo" title="重做 (Ctrl+Y)">重做</button>
+				<button id="btn-delete" title="删除选中对象 (Delete)">删除</button>
+			</div>
+			<div class="group">
+				<button id="btn-zoom-out" title="缩小">−</button>
+				<span class="zoom-label" id="zoom-label">100%</span>
+				<button id="btn-zoom-in" title="放大">+</button>
+				<button id="btn-fit" title="缩放到适合窗口">适应窗口</button>
+			</div>
+			<div class="group right">
+				<label for="page-select">页面</label>
+				<select id="page-select"></select>
+			</div>
+		</header>
+
+		<!-- 第二行工具栏：选中对象的文字、线型与箭头调整 -->
+		<div class="contextbar">
+			<div class="group">
+				<button id="btn-edit-label" title="编辑选中形状或连线的文字">编辑文字</button>
+			</div>
+			<div class="group">
+				<label for="edge-style">线型</label>
+				<select id="edge-style">
+					<option value="none">直线</option>
+					<option value="orthogonal">折线</option>
+					<option value="rounded">圆角折线</option>
+					<option value="curved">曲线</option>
+				</select>
+			</div>
+			<div class="group">
+				<label for="start-arrow">起点箭头</label>
+				<select id="start-arrow">
+					<option value="none">无</option>
+					<option value="classic">经典</option>
+					<option value="block">实心</option>
+					<option value="open">开放</option>
+					<option value="oval">圆点</option>
+					<option value="diamond">菱形</option>
+				</select>
+				<label for="end-arrow">终点箭头</label>
+				<select id="end-arrow">
+					<option value="none">无</option>
+					<option value="classic">经典</option>
+					<option value="block">实心</option>
+					<option value="open">开放</option>
+					<option value="oval">圆点</option>
+					<option value="diamond">菱形</option>
+				</select>
+				<button id="btn-reverse" title="交换连线起点与终点">反转方向</button>
+			</div>
+			<div class="group selection-hint" id="selection-hint">未选中对象</div>
+			<div class="group right tip">
+				双击形状或连线编辑文字；选中连线后拖动蓝色控制点调整路径与吸附位置
+			</div>
+		</div>
+
+		<!-- 画布区域：mxGraph实例挂载在graph-container上 -->
+		<main class="canvas-wrap">
+			<div id="graph-container"></div>
+			<div class="banner" id="banner" hidden></div>
+			<div class="empty" id="empty" hidden>暂无可编辑的图形</div>
+		</main>
+
+		<footer class="statusbar">
+			<span id="status">就绪</span>
+			<span id="info"></span>
+		</footer>
+	</div>
+
+	<!-- viewer-static提供mxGraph、mxCodec、mxCellEditor等编辑器所需全部类 -->
+	<script src="../../vendor/drawio/viewer-static.min.js"></script>
+	<script src="editor.js"></script>
+</body>
+</html>

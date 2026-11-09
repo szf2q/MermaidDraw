@@ -60,7 +60,7 @@
 	function cacheElements() {
 		const ids = [
 			'app', 'tabbar', 'btn-open', 'btn-history', 'btn-save', 'btn-save-as', 'file-name', 'dirty-mark',
-			'page-group', 'page-select', 'btn-convert', 'btn-png', 'theme-select', 'scale-select', 'transparent',
+			'page-group', 'page-select', 'btn-edit', 'btn-convert', 'btn-png', 'theme-select', 'scale-select', 'transparent',
 			'zoom-select', 'btn-menu', 'editor', 'preview', 'preview-title', 'preview-meta', 'status-text',
 			'status-size', 'toast', 'toast-text', 'toast-action', 'history-popup', 'history-list', 'history-clear',
 			'menu-popup', 'menu-install', 'menu-uninstall', 'menu-about'
@@ -360,7 +360,27 @@
 		el.btnConvert.disabled = mode !== 'mermaid';
 		el.btnSave.disabled = mode === 'drawio';
 		el.btnSaveAs.disabled = mode === 'drawio';
+		updateEditButton();
 		loadPreview(mode);
+	}
+
+	/**
+	 * 根据当前标签内容决定“可视化编辑”按钮是否可用。
+	 * mermaid需要编辑框有内容；drawio需要当前页已经解析出模型。
+	 * @returns {void}
+	 */
+	function updateEditButton() {
+		const tab = activeTab();
+		let enabled = false;
+		if (tab) {
+			if (tab.mode === 'mermaid') {
+				enabled = el.editor.value.trim().length > 0;
+			} else {
+				const page = tab.pages[tab.currentPage];
+				enabled = Boolean(page && page.xml);
+			}
+		}
+		el.btnEdit.disabled = !enabled;
 	}
 
 	/**
@@ -420,6 +440,7 @@
 		clearTimeout(renderTimer);
 		renderTimer = null;
 		const tab = activeTab();
+		updateEditButton();
 		const payload = buildRenderPayload();
 		if (!payload) {
 			// 无内容时清掉暂存参数，避免切换标签后仍把上一个标签的图渲染出来
@@ -663,6 +684,108 @@
 		} finally {
 			el.btnConvert.disabled = !(activeTab() && activeTab().mode === 'mermaid');
 		}
+	}
+
+	/**
+	 * 打开可视化编辑器窗口。
+	 * mermaid标签会带上当前编辑框内容，由主进程转换为drawio模型；
+	 * drawio标签直接传递全部页面，便于在编辑器中切页并保存回原文件。
+	 * @returns {Promise<void>} 打开结束
+	 */
+	async function openVisualEditor() {
+		const tab = activeTab();
+		if (!tab) {
+			showToast('没有可编辑的内容', {error: true});
+			return;
+		}
+		syncEditorToTab();
+		let payload;
+		if (tab.mode === 'mermaid') {
+			const content = el.editor.value;
+			if (!content.trim()) {
+				showToast('没有可编辑的mermaid代码', {error: true});
+				return;
+			}
+			payload = {
+				kind: 'mermaid',
+				content,
+				name: fileBaseName(tab.filePath),
+				sourcePath: tab.filePath
+			};
+		} else {
+			const page = tab.pages[tab.currentPage];
+			if (!page || !page.xml) {
+				showToast('当前页无法编辑，请确认页面内容是否可解析', {error: true});
+				return;
+			}
+			payload = {
+				kind: 'drawio',
+				filePath: tab.filePath,
+				title: fileBaseName(tab.filePath),
+				activeIndex: tab.currentPage,
+				pages: tab.pages.map((item) => ({id: item.id, name: item.name, xml: item.xml}))
+			};
+		}
+		el.btnEdit.disabled = true;
+		setStatus('正在打开可视化编辑器…');
+		try {
+			const result = await window.api.openEditor(payload);
+			if (!result || !result.ok) {
+				setStatus('打开可视化编辑器失败', 'error');
+				showToast((result && result.error) || '打开可视化编辑器失败', {error: true});
+				return;
+			}
+			setStatus('可视化编辑器已打开');
+		} finally {
+			updateEditButton();
+		}
+	}
+
+	/**
+	 * 编辑器保存回原drawio文件后，重新解析该文件并刷新标签内容。
+	 * @param {TabState} tab 需要刷新的drawio标签
+	 * @returns {Promise<void>} 刷新结束
+	 */
+	async function reloadDrawioTab(tab) {
+		if (!tab || !tab.filePath) {
+			return;
+		}
+		const result = await window.api.parseDrawio(tab.filePath);
+		if (!result || !result.ok) {
+			showToast((result && result.error) || '刷新drawio文件失败', {error: true});
+			return;
+		}
+		tab.pages = result.pages || [];
+		tab.currentPage = Math.min(Math.max(tab.currentPage, 0), Math.max(tab.pages.length - 1, 0));
+		if (state.activeTabId === tab.id) {
+			updatePageSelect();
+			renderNow();
+		}
+	}
+
+	/**
+	 * 响应编辑器保存成功事件：原文件已打开则刷新，mermaid生成的drawio则直接打开。
+	 * @param {{filePath: string, sourceKind: string, sourcePath: string|null}} info 保存信息
+	 * @returns {Promise<void>} 处理结束
+	 */
+	async function onEditorSaved(info) {
+		if (!info || typeof info.filePath !== 'string' || !info.filePath) {
+			return;
+		}
+		const existing = findTabByPath(info.filePath);
+		if (existing) {
+			if (existing.mode === 'drawio') {
+				await reloadDrawioTab(existing);
+			} else {
+				// 同路径的mermaid标签内容已过时，关闭后按新的drawio文件重新打开
+				closeTab(existing.id);
+				await openPath(info.filePath);
+			}
+			showToast(`已保存 ${info.filePath}`, {actionPath: info.filePath});
+			return;
+		}
+		showToast(`已保存 ${info.filePath}`, {actionPath: info.filePath});
+		await openPath(info.filePath);
 	}
 
 	/**
@@ -965,6 +1088,7 @@
 		el.historyClear.addEventListener('click', clearHistory);
 		el.btnSave.addEventListener('click', saveCurrent);
 		el.btnSaveAs.addEventListener('click', saveCurrentAs);
+		el.btnEdit.addEventListener('click', openVisualEditor);
 		el.btnConvert.addEventListener('click', convertCurrent);
 		el.btnPng.addEventListener('click', exportPng);
 		el.btnMenu.addEventListener('click', (event) => {
@@ -988,6 +1112,7 @@
 			}
 			tab.content = el.editor.value;
 			setDirty(true);
+			updateEditButton();
 			scheduleRender();
 		});
 		el.themeSelect.addEventListener('change', () => {
@@ -1033,6 +1158,7 @@
 		applyTabToUi(tab);
 		setStatus('就绪：点击打开、拖入文件，或使用资源管理器右键菜单');
 		window.api.onOpenFile((filePath) => openPath(filePath));
+		window.api.onEditorSaved((info) => onEditorSaved(info));
 		state.appInfo = await window.api.appInfo();
 	}
 

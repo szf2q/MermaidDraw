@@ -63,6 +63,23 @@ contextBridge.exposeInMainWorld('api', {
 		return ipcRenderer.invoke('export:png', payload);
 	},
 	/**
+	 * 在主进程中打开可视化编辑器窗口。
+	 * @param {object} payload 编辑器初始数据：{{kind: 'mermaid'|'drawio', content?: string, name?: string,
+	 *   sourcePath?: string|null, filePath?: string|null, pages?: Array<object>, activeIndex?: number}} 载荷
+	 * @returns {Promise<{ok: boolean, error?: string}>} 打开结果
+	 */
+	openEditor(payload) {
+		return ipcRenderer.invoke('editor:open', payload);
+	},
+	/**
+	 * 监听编辑器保存成功事件，主界面据此刷新已打开文件或打开新生成的drawio。
+	 * @param {(info: {filePath: string, sourceKind: string, sourcePath: string|null}) => void} callback 回调
+	 * @returns {void}
+	 */
+	onEditorSaved(callback) {
+		ipcRenderer.on('editor:saved', (event, info) => callback(info));
+	},
+	/**
 	 * 安装资源管理器右键菜单。
 	 * @returns {Promise<{ok: boolean, message: string}>} 结果
 	 */

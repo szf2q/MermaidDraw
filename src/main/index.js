@@ -11,6 +11,7 @@ const {parseCliArgs, formatHelp} = require('./cli');
 const {parseDrawioBuffer, isDrawioFile, isMermaidFile} = require('./drawio-file');
 const {convertMermaidFile, convertMermaidText, convertMermaidToDirectory, probeConverter, shutdownConverter} = require('./convert');
 const {capturePng} = require('./capture');
+const {installEditorIpc} = require('./editor-window');
 const {registerContextMenu, unregisterContextMenu, isContextMenuRegistered} = require('./context-menu');
 
 /** 允许打开的文件大小上限，超过后拒绝以免内存耗尽 */
@@ -453,6 +454,8 @@ function registerIpc() {
 
 	ipcMain.handle('convert:drawio', async (event, payload) => handleConvertToDrawio(payload));
 	ipcMain.handle('export:png', async (event, payload) => handleExportPng(payload));
+	// 可视化编辑器窗口与保存逻辑统一由editor-window模块维护，这里注入主窗口解析函数
+	installEditorIpc(() => mainWindow);
 	ipcMain.handle('menu:install', async () => registerContextMenu({exe: process.execPath, appRoot: app.isPackaged ? null : getAppRoot()}));
 	ipcMain.handle('menu:uninstall', async () => unregisterContextMenu());
 	ipcMain.handle('menu:status', async () => ({registered: isContextMenuRegistered()}));

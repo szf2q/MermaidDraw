@@ -1,0 +1,253 @@
+/* 可视化编辑器样式：与主程序保持一致的浅色紧凑风格，画布区域占满剩余空间 */
+
+* {
+	box-sizing: border-box;
+}
+
+[hidden] {
+	display: none !important;
+}
+
+html,
+body {
+	margin: 0;
+	height: 100%;
+	overflow: hidden;
+	background: #f5f6f7;
+	color: #1f2329;
+	font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+	font-size: 13px;
+}
+
+.app {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+}
+
+/* 两行工具栏都使用弹性布局，窗口变窄时自动换行 */
+.toolbar,
+.contextbar {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	padding: 8px 12px;
+	background: #ffffff;
+	flex-wrap: wrap;
+}
+
+.toolbar {
+	border-bottom: 1px solid #e5e6eb;
+}
+
+.contextbar {
+	border-bottom: 1px solid #e5e6eb;
+	padding-top: 6px;
+	padding-bottom: 6px;
+	background: #fafbfc;
+}
+
+.group {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.group.right {
+	margin-left: auto;
+}
+
+.group.tip {
+	color: #86909c;
+	font-size: 12px;
+	max-width: 52%;
+	white-space: normal;
+}
+
+.doc-info {
+	min-width: 220px;
+	max-width: 420px;
+}
+
+.doc-title {
+	max-width: 280px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-weight: 600;
+	color: #1f2329;
+}
+
+.dirty {
+	color: #d4380d;
+	font-size: 12px;
+}
+
+/* 来源标签用于提示当前内容来自mermaid还是drawio */
+.source-tag {
+	padding: 1px 6px;
+	border-radius: 3px;
+	background: #e8f3ff;
+	color: #1668dc;
+	font-size: 12px;
+}
+
+button,
+select,
+input {
+	font-family: inherit;
+	font-size: 13px;
+}
+
+button {
+	padding: 5px 12px;
+	border: 1px solid #d0d3d9;
+	border-radius: 4px;
+	background: #ffffff;
+	color: #1f2329;
+	cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+	border-color: #94bfff;
+	color: #1668dc;
+}
+
+button:active:not(:disabled) {
+	background: #f2f3f5;
+}
+
+button:disabled,
+select:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+button.primary {
+	background: #1668dc;
+	border-color: #1668dc;
+	color: #ffffff;
+}
+
+button.primary:hover:not(:disabled) {
+	background: #3c89e8;
+	border-color: #3c89e8;
+	color: #ffffff;
+}
+
+select {
+	padding: 4px 6px;
+	border: 1px solid #d0d3d9;
+	border-radius: 4px;
+	background: #ffffff;
+	color: #1f2329;
+}
+
+label {
+	color: #4e5969;
+	white-space: nowrap;
+}
+
+.zoom-label {
+	min-width: 48px;
+	text-align: center;
+	color: #4e5969;
+	font-variant-numeric: tabular-nums;
+}
+
+.selection-hint {
+	color: #4e5969;
+	font-size: 12px;
+}
+
+.canvas-wrap {
+	flex: 1;
+	position: relative;
+	min-height: 0;
+	background: #ffffff;
+	overflow: hidden;
+}
+
+/* mxGraph把画布与编辑框都挂在这个容器内，必须建立定位上下文 */
+#graph-container {
+	position: absolute;
+	inset: 0;
+	overflow: hidden;
+	background: #ffffff;
+}
+
+/* 状态条：左侧操作提示，右侧当前页面尺寸 */
+.statusbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	padding: 5px 12px;
+	border-top: 1px solid #e5e6eb;
+	background: #ffffff;
+	color: #4e5969;
+	font-size: 12px;
+}
+
+#status.error {
+	color: #d4380d;
+}
+
+#info {
+	color: #86909c;
+	white-space: nowrap;
+}
+
+/* 编辑来源或降级提示，不遮挡画布交互 */
+.banner {
+	position: absolute;
+	left: 50%;
+	top: 12px;
+	transform: translateX(-50%);
+	max-width: 80%;
+	padding: 8px 14px;
+	border: 1px solid #ffe58f;
+	border-radius: 4px;
+	background: #fffbe6;
+	color: #874d00;
+	font-size: 12px;
+	line-height: 1.6;
+	z-index: 20;
+	pointer-events: none;
+}
+
+/* 空内容提示 */
+.empty {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: #86909c;
+	font-size: 14px;
+	pointer-events: none;
+}
+
+/* mxCellEditor生成的编辑框是contenteditable的div，这里统一字体并用蓝色描边区分编辑态 */
+div.mxCellEditor {
+	border: 1px solid #1668dc !important;
+	border-radius: 3px !important;
+	box-shadow: 0 2px 10px rgba(22, 104, 220, 0.25);
+	padding: 3px 5px !important;
+	font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif !important;
+	font-size: 13px !important;
+	line-height: 1.4 !important;
+	background: #ffffff !important;
+	color: #1f2329 !important;
+	outline: none;
+}
+
+/* mxGraph的提示框使用深色底，覆盖默认样式以匹配整体风格 */
+.mxTooltip {
+	background: #1f2329;
+	border: 0;
+	color: #ffffff;
+	font-size: 12px;
+	padding: 4px 8px;
+	border-radius: 4px;
+}

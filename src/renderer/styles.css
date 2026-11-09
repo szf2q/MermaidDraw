@@ -113,6 +113,64 @@ label.check {
 	cursor: pointer;
 }
 
+.tabbar {
+	display: flex;
+	align-items: stretch;
+	gap: 4px;
+	padding: 6px 12px 0;
+	background: #f5f6f7;
+	border-bottom: 1px solid #e5e6eb;
+	overflow-x: auto;
+	flex: 0 0 auto;
+}
+
+.tab {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	max-width: 240px;
+	padding: 6px 8px 6px 12px;
+	background: #eceef1;
+	border: 1px solid #e5e6eb;
+	border-bottom: 0;
+	border-radius: 6px 6px 0 0;
+	color: #4e5969;
+	cursor: pointer;
+	white-space: nowrap;
+	flex: 0 0 auto;
+}
+
+.tab.active {
+	background: #ffffff;
+	color: #1f2329;
+}
+
+.tab-title {
+	max-width: 180px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.tab.dirty .tab-title::after {
+	content: "•";
+	margin-left: 4px;
+	color: #d4380d;
+}
+
+.tab-close {
+	width: 16px;
+	height: 16px;
+	line-height: 14px;
+	text-align: center;
+	border-radius: 3px;
+	color: #86909c;
+}
+
+.tab-close:hover {
+	background: #d0d3d9;
+	color: #1f2329;
+}
+
 .content {
 	flex: 1;
 	display: flex;

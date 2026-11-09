@@ -1,4 +1,4 @@
-// 主界面逻辑：文件打开与保存、mermaid实时预览、drawio分页预览、转换、PNG导出与右键菜单管理。
+// 主界面逻辑：多标签文件管理、mermaid实时预览、drawio分页预览、转换、PNG导出与右键菜单管理。
 // 预览由同源的iframe承担，父页面只负责下发渲染参数与展示状态。
 
 'use strict';
@@ -14,28 +14,36 @@
 	const el = {};
 
 	/**
-	 * @typedef {Object} AppState
-	 * @property {'mermaid'|'drawio'} mode 当前文件类型，决定编辑器是否可见与预览页类型
-	 * @property {string|null} filePath 当前文件绝对路径，未保存的新内容为null
+	 * @typedef {Object} TabState
+	 * @property {number} id 标签唯一标识
+	 * @property {'mermaid'|'drawio'} mode 文件类型，决定编辑器是否可见与预览页类型
+	 * @property {string|null} filePath 文件绝对路径，未保存的新内容为null
+	 * @property {string} content mermaid源码，切换标签时用于恢复编辑框内容
 	 * @property {Array<{id: string, name: string, xml: string|null, invalid?: boolean}>} pages drawio页面列表
 	 * @property {number} currentPage drawio当前页下标
 	 * @property {boolean} dirty mermaid内容是否有未保存修改
-	 * @property {string} theme mermaid主题名
+	 */
+
+	/**
+	 * @typedef {Object} AppState
+	 * @property {TabState[]} tabs 已打开的标签，至少保留一个
+	 * @property {number|null} activeTabId 当前标签id
+	 * @property {string} theme mermaid主题名，所有标签共用
 	 * @property {boolean} previewReady 预览iframe是否已完成初始化
 	 * @property {object|null} pendingRender 预览未就绪时暂存的渲染参数
 	 * @property {{version: string, packaged: boolean}|null} appInfo 应用信息，用于关于提示
 	 */
 	const state = {
-		mode: 'mermaid',
-		filePath: null,
-		pages: [],
-		currentPage: 0,
-		dirty: false,
+		tabs: [],
+		activeTabId: null,
 		theme: 'default',
 		previewReady: false,
 		pendingRender: null,
 		appInfo: null
 	};
+
+	/** 标签id自增序号 */
+	let tabSeq = 1;
 
 	/** 当前iframe加载的预览页类型，用于避免重复设置src */
 	let iframeMode = null;
@@ -51,9 +59,9 @@
 	 */
 	function cacheElements() {
 		const ids = [
-			'app', 'btn-open', 'btn-save', 'btn-save-as', 'file-name', 'dirty-mark', 'page-group', 'page-select',
-			'btn-convert', 'btn-png', 'theme-select', 'scale-select', 'transparent', 'zoom-select', 'btn-menu',
-			'editor', 'preview', 'preview-title', 'preview-meta', 'status-text', 'status-size',
+			'app', 'tabbar', 'btn-open', 'btn-save', 'btn-save-as', 'file-name', 'dirty-mark', 'page-group',
+			'page-select', 'btn-convert', 'btn-png', 'theme-select', 'scale-select', 'transparent', 'zoom-select',
+			'btn-menu', 'editor', 'preview', 'preview-title', 'preview-meta', 'status-text', 'status-size',
 			'toast', 'toast-text', 'toast-action', 'menu-popup', 'menu-install', 'menu-uninstall', 'menu-about'
 		];
 		ids.forEach((id) => {
@@ -99,25 +107,195 @@
 	}
 
 	/**
+	 * 取当前标签。
+	 * @returns {TabState|null} 当前标签，无标签时返回null
+	 */
+	function activeTab() {
+		return state.tabs.find((tab) => tab.id === state.activeTabId) || null;
+	}
+
+	/**
+	 * 取标签显示名。
+	 * @param {TabState} tab 标签
+	 * @returns {string} 文件名；未保存内容返回未命名.mmd
+	 */
+	function tabTitle(tab) {
+		if (tab.filePath) {
+			return String(tab.filePath).split(/[\\/]/).pop() || '未命名.mmd';
+		}
+		return '未命名.mmd';
+	}
+
+	/**
+	 * 创建标签并加入列表，不改变当前激活状态。
+	 * @param {{mode?: 'mermaid'|'drawio', filePath?: string|null, content?: string,
+	 *          pages?: Array<object>}} [init] 初始内容
+	 * @returns {TabState} 新标签
+	 */
+	function createTab(init) {
+		const config = init || {};
+		const tab = {
+			id: tabSeq,
+			mode: config.mode === 'drawio' ? 'drawio' : 'mermaid',
+			filePath: config.filePath || null,
+			content: config.content || '',
+			pages: config.pages || [],
+			currentPage: 0,
+			dirty: config.dirty === true
+		};
+		tabSeq += 1;
+		state.tabs.push(tab);
+		return tab;
+	}
+
+	/**
+	 * 查找已打开同一路径的标签。
+	 * @param {string} filePath 文件绝对路径
+	 * @returns {TabState|null} 匹配标签
+	 */
+	function findTabByPath(filePath) {
+		// Windows路径不区分大小写，比较前统一转小写，避免同一文件出现两个标签
+		const key = String(filePath).toLowerCase();
+		return state.tabs.find((tab) => tab.filePath && tab.filePath.toLowerCase() === key) || null;
+	}
+
+	/**
+	 * 把当前编辑框内容同步回当前标签。
+	 */
+	function syncEditorToTab() {
+		const tab = activeTab();
+		if (tab && tab.mode === 'mermaid') {
+			tab.content = el.editor.value;
+		}
+	}
+
+	/**
+	 * 把标签状态应用到界面并渲染预览。
+	 * @param {TabState} tab 目标标签
+	 */
+	function applyTabToUi(tab) {
+		el.editor.value = tab.mode === 'mermaid' ? tab.content : '';
+		updateFileLabel();
+		el.dirtyMark.hidden = !tab.dirty;
+		updatePageSelect();
+		setMode(tab.mode);
+		renderTabBar();
+		renderNow();
+	}
+
+	/**
+	 * 切换到指定标签。
+	 * @param {number} tabId 标签id
+	 */
+	function activateTab(tabId) {
+		if (tabId === state.activeTabId) {
+			return;
+		}
+		const tab = state.tabs.find((item) => item.id === tabId);
+		if (!tab) {
+			return;
+		}
+		syncEditorToTab();
+		state.activeTabId = tab.id;
+		applyTabToUi(tab);
+	}
+
+	/**
+	 * 关闭标签；有未保存修改时先确认，关闭最后一个标签后补一个空白标签。
+	 * @param {number} tabId 标签id
+	 */
+	function closeTab(tabId) {
+		const index = state.tabs.findIndex((item) => item.id === tabId);
+		if (index < 0) {
+			return;
+		}
+		const tab = state.tabs[index];
+		if (tab.dirty && !window.confirm(`“${tabTitle(tab)}”有未保存修改，关闭后这些修改会丢失，确定关闭吗？`)) {
+			return;
+		}
+		syncEditorToTab();
+		state.tabs.splice(index, 1);
+		if (state.tabs.length === 0) {
+			const empty = createTab({mode: 'mermaid'});
+			state.activeTabId = empty.id;
+			applyTabToUi(empty);
+			setStatus('就绪：点击打开、拖入文件，或使用资源管理器右键菜单');
+			return;
+		}
+		if (state.activeTabId === tabId) {
+			const next = state.tabs[Math.min(index, state.tabs.length - 1)];
+			state.activeTabId = next.id;
+			applyTabToUi(next);
+			return;
+		}
+		renderTabBar();
+	}
+
+	/**
+	 * 按标签列表重建标签栏。
+	 */
+	function renderTabBar() {
+		el.tabbar.innerHTML = '';
+		state.tabs.forEach((tab) => {
+			const item = document.createElement('div');
+			item.className = 'tab';
+			item.dataset.id = String(tab.id);
+			item.setAttribute('role', 'tab');
+			item.title = tab.filePath || tabTitle(tab);
+			item.classList.toggle('active', tab.id === state.activeTabId);
+			item.classList.toggle('dirty', tab.dirty);
+
+			const title = document.createElement('span');
+			title.className = 'tab-title';
+			title.textContent = tabTitle(tab);
+
+			const close = document.createElement('span');
+			close.className = 'tab-close';
+			close.textContent = '×';
+			close.title = '关闭标签';
+			close.setAttribute('role', 'button');
+			close.addEventListener('click', (event) => {
+				// 阻止冒泡，避免点关闭按钮时又触发标签切换
+				event.stopPropagation();
+				closeTab(tab.id);
+			});
+
+			item.appendChild(title);
+			item.appendChild(close);
+			item.addEventListener('click', () => activateTab(tab.id));
+			el.tabbar.appendChild(item);
+		});
+	}
+
+	/**
 	 * 更新工具栏文件名显示。
 	 */
 	function updateFileLabel() {
-		if (state.filePath) {
-			el.fileName.textContent = String(state.filePath).split(/[\\/]/).pop();
-			el.fileName.title = state.filePath;
+		const tab = activeTab();
+		if (tab && tab.filePath) {
+			el.fileName.textContent = String(tab.filePath).split(/[\\/]/).pop();
+			el.fileName.title = tab.filePath;
 			return;
 		}
-		el.fileName.textContent = state.mode === 'drawio' ? '未打开文件' : '未命名.mmd';
+		el.fileName.textContent = tab && tab.mode === 'drawio' ? '未打开文件' : '未命名.mmd';
 		el.fileName.title = '';
 	}
 
 	/**
-	 * 更新未保存标记。
+	 * 更新当前标签的未保存标记。
 	 * @param {boolean} dirty 是否已修改
 	 */
 	function setDirty(dirty) {
-		state.dirty = dirty;
+		const tab = activeTab();
+		if (!tab) {
+			return;
+		}
+		tab.dirty = dirty;
 		el.dirtyMark.hidden = !dirty;
+		const node = el.tabbar.querySelector(`.tab[data-id="${tab.id}"]`);
+		if (node) {
+			node.classList.toggle('dirty', dirty);
+		}
 	}
 
 	/**
@@ -176,7 +354,6 @@
 	 * @param {'mermaid'|'drawio'} mode 文件类型
 	 */
 	function setMode(mode) {
-		state.mode = mode;
 		el.app.classList.toggle('mode-drawio', mode === 'drawio');
 		el.pageGroup.hidden = mode !== 'drawio';
 		el.btnConvert.disabled = mode !== 'mermaid';
@@ -205,14 +382,18 @@
 	 * @returns {{kind: string, content: string, theme?: string}|null} 参数，无内容时返回null
 	 */
 	function buildRenderPayload() {
-		if (state.mode === 'mermaid') {
+		const tab = activeTab();
+		if (!tab) {
+			return null;
+		}
+		if (tab.mode === 'mermaid') {
 			const content = el.editor.value;
 			if (!content.trim()) {
 				return null;
 			}
 			return {kind: 'mermaid', content, theme: state.theme};
 		}
-		const page = state.pages[state.currentPage];
+		const page = tab.pages[tab.currentPage];
 		if (!page || !page.xml) {
 			return null;
 		}
@@ -232,15 +413,18 @@
 	}
 
 	/**
-	 * 立即按当前内容渲染预览。
+	 * 立即按当前标签内容渲染预览。
 	 */
 	function renderNow() {
 		clearTimeout(renderTimer);
 		renderTimer = null;
+		const tab = activeTab();
 		const payload = buildRenderPayload();
 		if (!payload) {
-			if (state.mode === 'drawio') {
-				const page = state.pages[state.currentPage];
+			// 无内容时清掉暂存参数，避免切换标签后仍把上一个标签的图渲染出来
+			state.pendingRender = null;
+			if (tab && tab.mode === 'drawio') {
+				const page = tab.pages[tab.currentPage];
 				setStatus(page && page.invalid ? '该页内容无法解析' : '没有可预览的页面', 'error');
 			} else {
 				setStatus('输入mermaid代码后自动预览');
@@ -249,7 +433,7 @@
 			el.previewMeta.textContent = '';
 			return;
 		}
-		el.previewMeta.textContent = state.mode === 'drawio' ? `第${state.currentPage + 1}页` : state.theme;
+		el.previewMeta.textContent = tab && tab.mode === 'drawio' ? `第${tab.currentPage + 1}页` : state.theme;
 		setStatus('正在渲染…');
 		sendRender(payload);
 	}
@@ -273,32 +457,51 @@
 	}
 
 	/**
-	 * 重新填充drawio页面下拉。
+	 * 重新填充当前标签的drawio页面下拉。
 	 */
 	function updatePageSelect() {
+		const tab = activeTab();
 		el.pageSelect.innerHTML = '';
-		state.pages.forEach((page, index) => {
+		if (!tab) {
+			return;
+		}
+		tab.pages.forEach((page, index) => {
 			const option = document.createElement('option');
 			option.value = String(index);
 			option.textContent = page.name || `Page-${index + 1}`;
 			el.pageSelect.appendChild(option);
 		});
-		el.pageSelect.value = String(state.currentPage);
+		el.pageSelect.value = String(tab.currentPage);
 	}
 
 	/**
-	 * 有未保存修改时询问是否放弃。
-	 * @returns {boolean} 允许继续时返回true
+	 * 在标签中打开文件；同一路径已打开时直接切换，空白未修改标签则直接复用。
+	 * @param {{mode: 'mermaid'|'drawio', filePath: string, content?: string, pages?: Array<object>}} init 标签初始内容
 	 */
-	function confirmDiscard() {
-		if (!state.dirty) {
-			return true;
+	function openInTab(init) {
+		const existing = findTabByPath(init.filePath);
+		if (existing) {
+			activateTab(existing.id);
+			return;
 		}
-		return window.confirm('当前mermaid内容有未保存修改，继续将丢失这些修改，确定继续吗？');
+		const current = activeTab();
+		if (current && !current.filePath && !current.dirty && !current.content.trim()) {
+			// 初始空白标签没有内容可保留，直接拿来装新文件，避免留下空标签
+			current.mode = init.mode;
+			current.filePath = init.filePath;
+			current.content = init.content || '';
+			current.pages = init.pages || [];
+			current.currentPage = 0;
+			applyTabToUi(current);
+			return;
+		}
+		const tab = createTab(init);
+		state.activeTabId = tab.id;
+		applyTabToUi(tab);
 	}
 
 	/**
-	 * 打开mermaid文件到编辑器。
+	 * 打开mermaid文件到新标签。
 	 * @param {string} filePath 文件绝对路径
 	 * @returns {Promise<void>} 打开结束
 	 */
@@ -308,20 +511,12 @@
 			showToast(result.error || '读取文件失败', {error: true});
 			return;
 		}
-		state.filePath = filePath;
-		state.pages = [];
-		state.currentPage = 0;
-		el.editor.value = result.content || '';
-		setDirty(false);
-		updateFileLabel();
-		updatePageSelect();
-		setMode('mermaid');
-		renderNow();
+		openInTab({mode: 'mermaid', filePath, content: result.content || ''});
 		setStatus('已打开文件');
 	}
 
 	/**
-	 * 打开drawio文件并按页预览。
+	 * 打开drawio文件到新标签并按页预览。
 	 * @param {string} filePath 文件绝对路径
 	 * @returns {Promise<void>} 打开结束
 	 */
@@ -331,27 +526,19 @@
 			showToast(result.error || '解析drawio文件失败', {error: true});
 			return;
 		}
-		state.filePath = filePath;
-		state.pages = result.pages || [];
-		state.currentPage = 0;
-		updateFileLabel();
-		updatePageSelect();
-		setMode('drawio');
-		renderNow();
-		const invalidCount = state.pages.filter((page) => page.invalid).length;
+		const pages = result.pages || [];
+		openInTab({mode: 'drawio', filePath, pages});
+		const invalidCount = pages.filter((page) => page.invalid).length;
 		setStatus(invalidCount > 0 ? `已打开文件，${invalidCount}页解析失败` : '已打开文件', invalidCount > 0 ? 'error' : 'normal');
 	}
 
 	/**
-	 * 按扩展名分发打开逻辑。
+	 * 按扩展名分发打开逻辑，新文件始终在标签中打开。
 	 * @param {string} filePath 文件绝对路径
 	 * @returns {Promise<void>} 打开结束
 	 */
 	async function openPath(filePath) {
 		if (!filePath) {
-			return;
-		}
-		if (!confirmDiscard()) {
 			return;
 		}
 		if (isDrawioPath(filePath)) {
@@ -378,38 +565,47 @@
 	}
 
 	/**
-	 * 保存当前mermaid内容到已有路径。
+	 * 保存当前标签的mermaid内容到已有路径。
 	 * @returns {Promise<void>} 保存结束
 	 */
 	async function saveCurrent() {
-		if (state.mode !== 'mermaid') {
+		const tab = activeTab();
+		if (!tab) {
+			return;
+		}
+		if (tab.mode !== 'mermaid') {
 			showToast('drawio文件仅支持预览与导出，不能在此编辑保存', {error: true});
 			return;
 		}
-		if (!state.filePath) {
+		if (!tab.filePath) {
 			await saveCurrentAs();
 			return;
 		}
-		const result = await window.api.saveTextFile(state.filePath, el.editor.value);
+		const result = await window.api.saveTextFile(tab.filePath, el.editor.value);
 		if (!result.ok) {
 			showToast(result.error || '保存失败', {error: true});
 			return;
 		}
+		tab.content = el.editor.value;
 		setDirty(false);
 		updateFileLabel();
 		setStatus('已保存');
 	}
 
 	/**
-	 * 另存为mermaid文件。
+	 * 把当前标签另存为mermaid文件。
 	 * @returns {Promise<void>} 保存结束
 	 */
 	async function saveCurrentAs() {
-		if (state.mode !== 'mermaid') {
+		const tab = activeTab();
+		if (!tab) {
+			return;
+		}
+		if (tab.mode !== 'mermaid') {
 			showToast('drawio文件仅支持预览与导出，不能在此编辑保存', {error: true});
 			return;
 		}
-		const name = `${fileBaseName(state.filePath)}.mmd`;
+		const name = `${fileBaseName(tab.filePath)}.mmd`;
 		const result = await window.api.saveTextFileAs(name, el.editor.value);
 		if (!result.ok) {
 			if (!result.canceled) {
@@ -417,18 +613,21 @@
 			}
 			return;
 		}
-		state.filePath = result.filePath;
+		tab.filePath = result.filePath;
+		tab.content = el.editor.value;
 		setDirty(false);
 		updateFileLabel();
+		renderTabBar();
 		setStatus('已保存');
 	}
 
 	/**
-	 * 把当前mermaid内容转换为drawio文件。
+	 * 把当前标签的mermaid内容转换为drawio文件。
 	 * @returns {Promise<void>} 转换结束
 	 */
 	async function convertCurrent() {
-		if (state.mode !== 'mermaid') {
+		const tab = activeTab();
+		if (!tab || tab.mode !== 'mermaid') {
 			showToast('仅mermaid代码支持转为drawio', {error: true});
 			return;
 		}
@@ -442,8 +641,8 @@
 		try {
 			const result = await window.api.convertToDrawio({
 				text,
-				name: fileBaseName(state.filePath),
-				sourcePath: state.filePath
+				name: fileBaseName(tab.filePath),
+				sourcePath: tab.filePath
 			});
 			if (!result.ok) {
 				setStatus('转换失败', 'error');
@@ -455,18 +654,22 @@
 			const warning = result.warning ? `，${result.warning}` : '';
 			showToast(`已生成 ${result.outPath}${note}${warning}`, {actionPath: result.outPath});
 		} finally {
-			el.btnConvert.disabled = state.mode !== 'mermaid';
+			el.btnConvert.disabled = !(activeTab() && activeTab().mode === 'mermaid');
 		}
 	}
 
 	/**
-	 * 生成当前预览的导出参数。
+	 * 生成当前标签的导出参数。
 	 * @returns {object|null} 导出参数，无内容时返回null
 	 */
 	function buildExportPayload() {
+		const tab = activeTab();
+		if (!tab) {
+			return null;
+		}
 		const scale = Number(el.scaleSelect.value) || 2;
 		const transparent = el.transparent.checked;
-		if (state.mode === 'mermaid') {
+		if (tab.mode === 'mermaid') {
 			const content = el.editor.value;
 			if (!content.trim()) {
 				showToast('没有可导出的mermaid代码', {error: true});
@@ -476,14 +679,14 @@
 				kind: 'mermaid',
 				content,
 				theme: state.theme,
-				name: fileBaseName(state.filePath),
-				sourcePath: state.filePath,
+				name: fileBaseName(tab.filePath),
+				sourcePath: tab.filePath,
 				scale,
 				transparent,
 				multiPage: false
 			};
 		}
-		const page = state.pages[state.currentPage];
+		const page = tab.pages[tab.currentPage];
 		if (!page || !page.xml) {
 			showToast('当前页无法导出，请先确认页面内容是否可解析', {error: true});
 			return null;
@@ -492,17 +695,17 @@
 			kind: 'drawio',
 			content: page.xml,
 			theme: 'default',
-			name: fileBaseName(state.filePath),
+			name: fileBaseName(tab.filePath),
 			pageName: page.name,
-			sourcePath: state.filePath,
+			sourcePath: tab.filePath,
 			scale,
 			transparent,
-			multiPage: state.pages.length > 1
+			multiPage: tab.pages.length > 1
 		};
 	}
 
 	/**
-	 * 导出当前预览为PNG。
+	 * 导出当前标签的预览为PNG。
 	 * @returns {Promise<void>} 导出结束
 	 */
 	async function exportPng() {
@@ -650,13 +853,14 @@
 	}
 
 	/**
-	 * 处理拖入的文件，只取第一个受支持的类型。
+	 * 处理拖入的文件，每个受支持的文件各开一个标签。
 	 * @param {DragEvent} event 拖拽事件
 	 * @returns {Promise<void>} 处理结束
 	 */
 	async function onDrop(event) {
 		event.preventDefault();
 		const files = event.dataTransfer ? Array.from(event.dataTransfer.files) : [];
+		let opened = 0;
 		for (const file of files) {
 			const filePath = window.api.getPathForFile(file);
 			if (!filePath) {
@@ -664,10 +868,12 @@
 			}
 			if (isDrawioPath(filePath) || isMermaidPath(filePath)) {
 				await openPath(filePath);
-				return;
+				opened += 1;
 			}
 		}
-		showToast('拖入的文件不是.mmd、.mermaid或.drawio文件', {error: true});
+		if (opened === 0) {
+			showToast('拖入的文件不是.mmd、.mermaid或.drawio文件', {error: true});
+		}
 	}
 
 	/**
@@ -694,22 +900,28 @@
 			hideToast();
 		});
 		el.editor.addEventListener('input', () => {
-			if (state.mode !== 'mermaid') {
+			const tab = activeTab();
+			if (!tab || tab.mode !== 'mermaid') {
 				return;
 			}
+			tab.content = el.editor.value;
 			setDirty(true);
-			updateFileLabel();
 			scheduleRender();
 		});
 		el.themeSelect.addEventListener('change', () => {
 			state.theme = el.themeSelect.value;
-			if (state.mode === 'mermaid') {
+			const tab = activeTab();
+			if (tab && tab.mode === 'mermaid') {
 				renderNow();
 			}
 		});
 		el.zoomSelect.addEventListener('change', applyZoom);
 		el.pageSelect.addEventListener('change', () => {
-			state.currentPage = Number(el.pageSelect.value) || 0;
+			const tab = activeTab();
+			if (!tab) {
+				return;
+			}
+			tab.currentPage = Number(el.pageSelect.value) || 0;
 			renderNow();
 		});
 		window.addEventListener('message', onPreviewMessage);
@@ -727,16 +939,16 @@
 	}
 
 	/**
-	 * 初始化界面：缓存元素、绑定事件、加载预览页并接收主进程转发的文件。
+	 * 初始化界面：缓存元素、绑定事件、创建空白标签并接收主进程转发的文件。
 	 * @returns {Promise<void>} 初始化结束
 	 */
 	async function init() {
 		cacheElements();
 		bindEvents();
 		state.theme = el.themeSelect.value;
-		updateFileLabel();
-		setMode('mermaid');
-		renderNow();
+		const tab = createTab({mode: 'mermaid'});
+		state.activeTabId = tab.id;
+		applyTabToUi(tab);
 		setStatus('就绪：点击打开、拖入文件，或使用资源管理器右键菜单');
 		window.api.onOpenFile((filePath) => openPath(filePath));
 		state.appInfo = await window.api.appInfo();

@@ -318,7 +318,7 @@
 		const normalized = normalizeModelXml(modelXml, bounds);
 		return [
 			'<?xml version="1.0" encoding="UTF-8"?>',
-			'<mxfile host="app.diagrams.net" agent="MermaidDrawioTool" version="24.0.0" type="device">',
+			'<mxfile host="app.diagrams.net" agent="MermaidDraw" version="24.0.0" type="device">',
 			`  <diagram id="${uuid()}" name="${escapeXmlAttr(name || 'Page-1')}">`,
 			`    ${normalized}`,
 			'  </diagram>',

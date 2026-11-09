@@ -56,7 +56,7 @@ const optionalStencils = ['uml', 'er', 'flowchart', 'basic', 'arrows2', 'network
  */
 function download(url, redirectLeft = 5) {
 	return new Promise((resolve, reject) => {
-		const req = https.get(url, {headers: {'User-Agent': 'MermaidDrawioTool/1.0'}}, (res) => {
+		const req = https.get(url, {headers: {'User-Agent': 'MermaidDraw/1.0'}}, (res) => {
 			const status = res.statusCode || 0;
 			if (status >= 300 && status < 400 && res.headers.location && redirectLeft > 0) {
 				res.resume();

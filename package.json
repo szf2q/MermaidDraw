@@ -1,5 +1,5 @@
 {
-  "name": "mermaid-drawio-tool",
+  "name": "mermaid-draw",
   "version": "1.0.0",
   "private": true,
   "description": "Mermaid与drawio图表的查看、转换与PNG导出工具",
@@ -19,8 +19,8 @@
     "electron-builder": "26.18.0"
   },
   "build": {
-    "appId": "com.local.mermaiddrawiotool",
-    "productName": "MermaidDrawioTool",
+    "appId": "com.local.mermaiddraw",
+    "productName": "MermaidDraw",
     "electronDist": "node_modules/electron/dist",
     "directories": {
       "output": "dist"

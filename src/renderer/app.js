@@ -555,7 +555,7 @@
 			state.appInfo = await window.api.appInfo();
 		}
 		const info = state.appInfo;
-		showToast(`Mermaid/Drawio转换查看工具 版本${info.version}，${info.packaged ? '安装版' : '开发态'}，平台${info.platform}`);
+		showToast(`MermaidDraw转换查看工具 版本${info.version}，${info.packaged ? '安装版' : '开发态'}，平台${info.platform}`);
 	}
 
 	/**

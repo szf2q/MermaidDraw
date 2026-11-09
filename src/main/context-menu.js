@@ -6,7 +6,7 @@
 const {execFileSync} = require('node:child_process');
 
 /** 注册表菜单键的固定前缀，卸载时按此前缀整体删除 */
-const TOOL_KEY = 'MermaidDrawioTool';
+const TOOL_KEY = 'MermaidDraw';
 
 /** 需要注册右键菜单的扩展名 */
 const EXTENSIONS = ['.mmd', '.mermaid', '.drawio', '.dio'];

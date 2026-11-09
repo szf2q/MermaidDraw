@@ -98,17 +98,17 @@ function parseCliArgs(args) {
  */
 function formatHelp() {
 	return [
-		'Mermaid/Drawio 转换查看工具',
+		'MermaidDraw转换查看工具',
 		'',
 		'用法:',
-		'  MermaidDrawioTool.exe [文件]                      打开预览',
-		'  MermaidDrawioTool.exe --preview <文件>            打开预览',
-		'  MermaidDrawioTool.exe --to-drawio <文件>          把.mmd/.mermaid转为.drawio',
-		'  MermaidDrawioTool.exe --to-png <文件> [--scale 2] [--transparent]',
+		'  MermaidDraw.exe [文件]                            打开预览',
+		'  MermaidDraw.exe --preview <文件>                  打开预览',
+		'  MermaidDraw.exe --to-drawio <文件>                把.mmd/.mermaid转为.drawio',
+		'  MermaidDraw.exe --to-png <文件> [--scale 2] [--transparent]',
 		'                                                    把.mmd/.mermaid/.drawio导出为PNG',
-		'  MermaidDrawioTool.exe --install-menu              安装资源管理器右键菜单',
-		'  MermaidDrawioTool.exe --uninstall-menu            移除资源管理器右键菜单',
-		'  MermaidDrawioTool.exe --help                      显示本帮助',
+		'  MermaidDraw.exe --install-menu                    安装资源管理器右键菜单',
+		'  MermaidDraw.exe --uninstall-menu                  移除资源管理器右键菜单',
+		'  MermaidDraw.exe --help                            显示本帮助',
 		'',
 		'输出规则: 默认写到源文件同目录；目标已存在时自动追加-1、-2后缀，不覆盖原文件。'
 	].join('\n');

@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+	<meta charset="utf-8">
+	<title>Mermaid/Drawio转换查看工具</title>
+	<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+	<div class="app" id="app">
+		<header class="toolbar">
+			<div class="group">
+				<button id="btn-open" class="primary">打开</button>
+				<button id="btn-save">保存</button>
+				<button id="btn-save-as">另存为</button>
+			</div>
+			<div class="group file-info">
+				<span id="file-name">未打开文件</span>
+				<span id="dirty-mark" class="dirty" hidden>未保存</span>
+			</div>
+			<div class="group" id="page-group" hidden>
+				<label for="page-select">页面</label>
+				<select id="page-select"></select>
+			</div>
+			<div class="group">
+				<button id="btn-convert">转为Drawio</button>
+				<button id="btn-png">导出PNG</button>
+			</div>
+			<div class="group">
+				<label for="theme-select">主题</label>
+				<select id="theme-select">
+					<option value="default">默认</option>
+					<option value="dark">深色</option>
+					<option value="forest">森林</option>
+					<option value="neutral">中性</option>
+				</select>
+				<label for="scale-select">倍率</label>
+				<select id="scale-select">
+					<option value="1">1x</option>
+					<option value="2" selected>2x</option>
+					<option value="3">3x</option>
+				</select>
+				<label class="check"><input type="checkbox" id="transparent">透明背景</label>
+				<label for="zoom-select">缩放</label>
+				<select id="zoom-select">
+					<option value="fit" selected>适应窗口</option>
+					<option value="actual">100%</option>
+					<option value="0.5">50%</option>
+					<option value="1.5">150%</option>
+					<option value="2">200%</option>
+				</select>
+			</div>
+			<div class="group right">
+				<button id="btn-menu">右键菜单</button>
+			</div>
+		</header>
+
+		<main class="content">
+			<section class="editor-pane" id="editor-pane">
+				<div class="pane-head">
+					<span>Mermaid源码</span>
+					<span class="hint">Ctrl+Enter立即刷新</span>
+				</div>
+				<textarea id="editor" spellcheck="false" placeholder="在此粘贴或输入mermaid代码，例如：&#10;flowchart TD&#10;  A[开始] --> B[处理]"></textarea>
+			</section>
+			<section class="preview-pane">
+				<div class="pane-head">
+					<span id="preview-title">预览</span>
+					<span id="preview-meta" class="hint"></span>
+				</div>
+				<div class="preview-body">
+					<iframe id="preview" title="预览"></iframe>
+				</div>
+			</section>
+		</main>
+
+		<footer class="statusbar">
+			<span id="status-text">就绪</span>
+			<span id="status-size"></span>
+		</footer>
+
+		<div class="toast" id="toast" hidden>
+			<span id="toast-text"></span>
+			<button id="toast-action" hidden>在文件夹中显示</button>
+		</div>
+
+		<div class="menu-popup" id="menu-popup" hidden>
+			<button id="menu-install">安装右键菜单</button>
+			<button id="menu-uninstall">移除右键菜单</button>
+			<button id="menu-about">关于</button>
+		</div>
+	</div>
+	<script src="app.js"></script>
+</body>
+</html>

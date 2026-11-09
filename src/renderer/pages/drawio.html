@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+	<meta charset="utf-8">
+	<title>Drawio预览</title>
+	<style>
+		html, body {
+			margin: 0;
+			height: 100%;
+			background: #ffffff;
+			overflow: hidden;
+			font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+		}
+		html.transparent, html.transparent body {
+			background: transparent;
+		}
+		#viewport {
+			position: absolute;
+			inset: 0;
+			overflow: hidden;
+		}
+		#content {
+			position: absolute;
+			left: 0;
+			top: 0;
+		}
+		#content svg {
+			display: block;
+			/* viewer会在svg前插入占位元素，绝对定位到左上角才能让内容与导出的像素尺寸对齐 */
+			position: absolute;
+			left: 0;
+			top: 0;
+		}
+		#error {
+			position: absolute;
+			left: 12px;
+			right: 12px;
+			top: 12px;
+			padding: 10px 12px;
+			background: #fff1f0;
+			border: 1px solid #ffa39e;
+			color: #a8071a;
+			font-size: 13px;
+			line-height: 1.6;
+			border-radius: 4px;
+			white-space: pre-wrap;
+			z-index: 10;
+		}
+		body.capture #error {
+			display: none;
+		}
+	</style>
+	<script>
+		// drawio viewer在加载时读取这些全局路径，指向本地vendor以避免联网请求样式与模具。
+		window.STYLE_PATH = 'app://app/vendor/drawio/styles';
+		window.STENCIL_PATH = 'app://app/vendor/drawio/stencils';
+		window.SHAPES_PATH = 'app://app/vendor/drawio/shapes';
+		window.PROXY_URL = '';
+		window.mxLoadStylesheets = false;
+		window.mxBasePath = 'app://app/vendor/drawio/mxgraph/';
+	</script>
+</head>
+<body>
+	<div id="viewport"><div id="content"></div></div>
+	<div id="error" hidden></div>
+	<script src="../../../vendor/drawio/viewer-static.min.js"></script>
+	<script src="preview-common.js"></script>
+	<script src="drawio.js"></script>
+</body>
+</html>

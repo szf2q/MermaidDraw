@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+	<meta charset="utf-8">
+	<title>Mermaid转换工作页</title>
+	<!-- 这里不设置CSP：drawio与mermaid的压缩bundle需要内联脚本与动态代码，
+	     页面本身不加载远程内容，安全边界由BrowserWindow的contextIsolation与nodeIntegration关闭保证。 -->
+	<script>
+		// drawio viewer在脚本加载时读取这些全局路径，必须在其之前赋值，全部指向本地vendor避免联网。
+		window.STYLE_PATH = 'app://app/vendor/drawio/styles';
+		window.STENCIL_PATH = 'app://app/vendor/drawio/stencils';
+		window.SHAPES_PATH = 'app://app/vendor/drawio/shapes';
+		window.PROXY_URL = '';
+		window.mxLoadStylesheets = false;
+		window.mxBasePath = 'app://app/vendor/drawio/mxgraph/';
+	</script>
+</head>
+<body>
+	<div id="stage"></div>
+	<!-- 加载顺序是drawio的硬约束：ELK在前，mermaid bundle随后，viewer提供mxCodec用于序列化 -->
+	<script src="../../vendor/drawio/elk/drawio-elk.min.js"></script>
+	<script src="../../vendor/drawio/mermaid/drawio-mermaid.min.js"></script>
+	<script src="../../vendor/drawio/viewer-static.min.js"></script>
+	<script src="../../vendor/mermaid/mermaid.min.js"></script>
+	<script src="convert.js"></script>
+</body>
+</html>

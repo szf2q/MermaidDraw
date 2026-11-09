@@ -1,0 +1,46 @@
+{
+  "name": "mermaid-drawio-tool",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Mermaid与drawio图表的查看、转换与PNG导出工具",
+  "main": "src/main/index.js",
+  "author": "sunzhenfeng",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "vendor": "node scripts/fetch-vendor.mjs",
+    "menu:install": "node scripts/menu.mjs install",
+    "menu:uninstall": "node scripts/menu.mjs uninstall",
+    "dist": "electron-builder --win --publish never",
+    "probe": "electron . --probe-mermaid"
+  },
+  "devDependencies": {
+    "electron": "45.2.3",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "com.local.mermaiddrawiotool",
+    "productName": "MermaidDrawioTool",
+    "electronDist": "node_modules/electron/dist",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "vendor/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    }
+  }
+}

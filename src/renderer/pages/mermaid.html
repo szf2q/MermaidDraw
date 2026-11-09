@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+	<meta charset="utf-8">
+	<title>Mermaid预览</title>
+	<style>
+		html, body {
+			margin: 0;
+			height: 100%;
+			background: #ffffff;
+			overflow: hidden;
+			font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+		}
+		html.transparent, html.transparent body {
+			background: transparent;
+		}
+		#viewport {
+			position: absolute;
+			inset: 0;
+			overflow: hidden;
+		}
+		#content {
+			position: absolute;
+			left: 0;
+			top: 0;
+		}
+		#content svg {
+			display: block;
+			max-width: none;
+		}
+		#error {
+			position: absolute;
+			left: 12px;
+			right: 12px;
+			top: 12px;
+			padding: 10px 12px;
+			background: #fff1f0;
+			border: 1px solid #ffa39e;
+			color: #a8071a;
+			font-size: 13px;
+			line-height: 1.6;
+			border-radius: 4px;
+			white-space: pre-wrap;
+			z-index: 10;
+		}
+		body.capture #error {
+			display: none;
+		}
+	</style>
+</head>
+<body>
+	<div id="viewport"><div id="content"></div></div>
+	<div id="error" hidden></div>
+	<script src="../../../vendor/mermaid/mermaid.min.js"></script>
+	<script src="preview-common.js"></script>
+	<script src="mermaid.js"></script>
+</body>
+</html>

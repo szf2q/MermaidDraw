@@ -1,0 +1,262 @@
+/* 主界面样式：浅色、紧凑，预览区占主要空间 */
+
+* {
+	box-sizing: border-box;
+}
+
+html,
+body {
+	margin: 0;
+	height: 100%;
+	background: #f5f6f7;
+	color: #1f2329;
+	font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+	font-size: 13px;
+}
+
+.app {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+}
+
+.toolbar {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	padding: 8px 12px;
+	background: #ffffff;
+	border-bottom: 1px solid #e5e6eb;
+	flex-wrap: wrap;
+}
+
+.group {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.group.right {
+	margin-left: auto;
+}
+
+.file-info {
+	min-width: 200px;
+	color: #4e5969;
+}
+
+.file-info #file-name {
+	max-width: 360px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.dirty {
+	color: #d4380d;
+	font-size: 12px;
+}
+
+button,
+select,
+input[type="checkbox"] {
+	font-family: inherit;
+	font-size: 13px;
+}
+
+button {
+	padding: 5px 12px;
+	border: 1px solid #d0d3d9;
+	border-radius: 4px;
+	background: #ffffff;
+	color: #1f2329;
+	cursor: pointer;
+}
+
+button:hover {
+	border-color: #94bfff;
+	color: #1668dc;
+}
+
+button:active {
+	background: #f2f3f5;
+}
+
+button.primary {
+	background: #1668dc;
+	border-color: #1668dc;
+	color: #ffffff;
+}
+
+button.primary:hover {
+	background: #3c89e8;
+	color: #ffffff;
+}
+
+select {
+	padding: 4px 6px;
+	border: 1px solid #d0d3d9;
+	border-radius: 4px;
+	background: #ffffff;
+	color: #1f2329;
+}
+
+label {
+	color: #4e5969;
+	white-space: nowrap;
+}
+
+label.check {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	cursor: pointer;
+}
+
+.content {
+	flex: 1;
+	display: flex;
+	min-height: 0;
+}
+
+.editor-pane {
+	width: 42%;
+	min-width: 280px;
+	display: flex;
+	flex-direction: column;
+	border-right: 1px solid #e5e6eb;
+	background: #ffffff;
+}
+
+.app.mode-drawio .editor-pane {
+	display: none;
+}
+
+.pane-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 6px 12px;
+	border-bottom: 1px solid #f0f1f3;
+	color: #4e5969;
+	font-size: 12px;
+	background: #fafbfc;
+}
+
+.hint {
+	color: #86909c;
+	font-size: 12px;
+}
+
+#editor {
+	flex: 1;
+	border: 0;
+	outline: none;
+	resize: none;
+	padding: 12px;
+	font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+	font-size: 13px;
+	line-height: 1.7;
+	tab-size: 2;
+	color: #1f2329;
+	background: #ffffff;
+}
+
+.preview-pane {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	background: #ffffff;
+}
+
+.preview-body {
+	flex: 1;
+	position: relative;
+	min-height: 0;
+}
+
+#preview {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	border: 0;
+	background: #ffffff;
+}
+
+.statusbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 5px 12px;
+	border-top: 1px solid #e5e6eb;
+	background: #ffffff;
+	color: #4e5969;
+	font-size: 12px;
+}
+
+.statusbar #status-size {
+	color: #86909c;
+}
+
+.statusbar .error {
+	color: #d4380d;
+}
+
+.toast {
+	position: fixed;
+	right: 16px;
+	bottom: 44px;
+	max-width: 460px;
+	padding: 10px 14px;
+	background: #1f2329;
+	color: #ffffff;
+	border-radius: 6px;
+	box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	z-index: 20;
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+.toast.error {
+	background: #a8071a;
+}
+
+.toast button {
+	background: transparent;
+	border: 1px solid rgba(255, 255, 255, 0.6);
+	color: #ffffff;
+	padding: 3px 10px;
+	white-space: nowrap;
+}
+
+.menu-popup {
+	position: fixed;
+	top: 44px;
+	right: 12px;
+	min-width: 160px;
+	padding: 6px;
+	background: #ffffff;
+	border: 1px solid #e5e6eb;
+	border-radius: 6px;
+	box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+	z-index: 30;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.menu-popup button {
+	border: 0;
+	text-align: left;
+	padding: 7px 10px;
+}
+
+.menu-popup button:hover {
+	background: #f2f3f5;
+	color: #1668dc;
+}

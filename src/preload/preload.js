@@ -63,6 +63,30 @@ contextBridge.exposeInMainWorld('api', {
 		return ipcRenderer.invoke('export:png', payload);
 	},
 	/**
+	 * 在系统浏览器打开mermaid.live并预载当前代码。
+	 * @param {{content: string, theme?: string}} payload 代码与主题
+	 * @returns {Promise<{ok: boolean, url?: string, error?: string}>} 打开结果
+	 */
+	openMermaidLive(payload) {
+		return ipcRenderer.invoke('online:mermaid', payload);
+	},
+	/**
+	 * 在系统浏览器打开draw.io网页版并预载当前图形。
+	 * @param {{xml: string}} payload drawio的mxfile或mxGraphModel文本
+	 * @returns {Promise<{ok: boolean, url?: string, error?: string}>} 打开结果
+	 */
+	openDrawioWeb(payload) {
+		return ipcRenderer.invoke('online:drawio', payload);
+	},
+	/**
+	 * 把在线编辑器回写的drawio内容保存到本地文件。
+	 * @param {{path?: string|null, name?: string, xml: string}} payload 保存参数
+	 * @returns {Promise<{ok: boolean, filePath?: string, canceled?: boolean, error?: string}>} 保存结果
+	 */
+	saveDrawio(payload) {
+		return ipcRenderer.invoke('drawio:save', payload);
+	},
+	/**
 	 * 安装资源管理器右键菜单。
 	 * @returns {Promise<{ok: boolean, message: string}>} 结果
 	 */

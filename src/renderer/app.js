@@ -55,15 +55,35 @@
 	let toastTimer = null;
 
 	/**
+	 * @typedef {Object} OnlineEditorState
+	 * @property {number|null} tabId 正在在线编辑的标签id
+	 * @property {boolean} frameReady 内嵌编辑页是否已就绪，可接收加载指令
+	 * @property {{xml: string, title: string}|null} pendingLoad 等待下发给编辑器的图形数据
+	 * @property {string} originalXml 打开在线编辑器时的图形XML，用于判断是否有修改
+	 * @property {string} latestXml 最近一次从在线编辑器收到的图形XML
+	 * @property {boolean} dirty 在线编辑器中是否存在未回写的修改
+	 */
+	const onlineEditor = {
+		tabId: null,
+		frameReady: false,
+		pendingLoad: null,
+		originalXml: '',
+		latestXml: '',
+		dirty: false
+	};
+
+	/**
 	 * 缓存页面元素。
 	 */
 	function cacheElements() {
 		const ids = [
 			'app', 'tabbar', 'btn-open', 'btn-history', 'btn-save', 'btn-save-as', 'file-name', 'dirty-mark',
-			'page-group', 'page-select', 'btn-convert', 'btn-png', 'theme-select', 'scale-select', 'transparent',
-			'zoom-select', 'btn-menu', 'editor', 'preview', 'preview-title', 'preview-meta', 'status-text',
+			'page-group', 'page-select', 'btn-convert', 'btn-online-edit', 'btn-png', 'theme-select', 'scale-select',
+			'transparent', 'zoom-select', 'btn-menu', 'editor', 'preview', 'preview-title', 'preview-meta', 'status-text',
 			'status-size', 'toast', 'toast-text', 'toast-action', 'history-popup', 'history-list', 'history-clear',
-			'menu-popup', 'menu-install', 'menu-uninstall', 'menu-about'
+			'menu-popup', 'menu-install', 'menu-uninstall', 'menu-about',
+			'online-editor', 'online-editor-title', 'online-editor-status', 'online-editor-browser',
+			'online-editor-close', 'online-editor-frame'
 		];
 		ids.forEach((id) => {
 			el[toCamel(id)] = document.getElementById(id);
@@ -105,6 +125,60 @@
 	function fileBaseName(filePath) {
 		const name = String(filePath || '').split(/[\\/]/).pop() || '';
 		return name.replace(/\.(mmd|mermaid|drawio|dio)$/i, '') || 'untitled';
+	}
+
+	/**
+	 * 转义XML属性值，避免页面名中的特殊字符破坏mxfile结构。
+	 * @param {string} value 原始文本
+	 * @returns {string} 转义后的文本
+	 */
+	function escapeXmlAttr(value) {
+		return String(value)
+			.replace(/&/g, '&amp;')
+			.replace(/"/g, '&quot;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;');
+	}
+
+	/**
+	 * 把标签内的所有drawio页面拼成完整mxfile，供在线编辑器加载。
+	 * 在线编辑器支持多页签，因此这里保留全部页面，而不是只传当前页。
+	 * @param {TabState} tab 目标标签
+	 * @returns {string} mxfile文本，没有可编辑页面时返回空字符串
+	 */
+	function buildDrawioMxfile(tab) {
+		if (!tab || !Array.isArray(tab.pages)) {
+			return '';
+		}
+		const validPages = tab.pages.filter((page) => page && page.xml);
+		if (validPages.length === 0) {
+			return '';
+		}
+		const diagrams = validPages.map((page, index) => {
+			const id = escapeXmlAttr(page.id || `page-${index + 1}`);
+			const name = escapeXmlAttr(page.name || `Page-${index + 1}`);
+			return `<diagram id="${id}" name="${name}">${page.xml}</diagram>`;
+		});
+		return `<mxfile host="app.diagrams.net" type="device">${diagrams.join('')}</mxfile>`;
+	}
+
+	/**
+	 * 更新指定标签的未保存标记及标签栏显示。
+	 * @param {TabState} tab 目标标签
+	 * @param {boolean} dirty 是否已修改
+	 */
+	function updateTabDirty(tab, dirty) {
+		if (!tab) {
+			return;
+		}
+		tab.dirty = dirty;
+		if (tab.id === state.activeTabId) {
+			el.dirtyMark.hidden = !dirty;
+		}
+		const node = el.tabbar.querySelector(`.tab[data-id="${tab.id}"]`);
+		if (node) {
+			node.classList.toggle('dirty', dirty);
+		}
 	}
 
 	/**
@@ -196,6 +270,10 @@
 		if (!tab) {
 			return;
 		}
+		// 在线编辑器覆盖在当前标签上，切换标签前必须先关闭，避免回写目标错乱
+		if (onlineEditor.tabId !== null && onlineEditor.tabId !== tabId && !requestCloseOnlineEditor()) {
+			return;
+		}
 		syncEditorToTab();
 		state.activeTabId = tab.id;
 		applyTabToUi(tab);
@@ -213,6 +291,10 @@
 		const tab = state.tabs[index];
 		if (tab.dirty && !window.confirm(`“${tabTitle(tab)}”有未保存修改，关闭后这些修改会丢失，确定关闭吗？`)) {
 			return;
+		}
+		// 关闭正在在线编辑的标签时一并销毁编辑器，前面的确认已经覆盖未保存修改
+		if (onlineEditor.tabId === tabId) {
+			requestCloseOnlineEditor(true);
 		}
 		syncEditorToTab();
 		state.tabs.splice(index, 1);
@@ -360,6 +442,9 @@
 		el.btnConvert.disabled = mode !== 'mermaid';
 		el.btnSave.disabled = mode === 'drawio';
 		el.btnSaveAs.disabled = mode === 'drawio';
+		el.btnOnlineEdit.title = mode === 'drawio'
+			? '在应用内嵌draw.io编辑器中进行可视化编辑，保存后回写文件'
+			: '在浏览器打开Mermaid Live Editor在线编辑当前代码';
 		loadPreview(mode);
 	}
 
@@ -480,6 +565,10 @@
 	 * @param {{mode: 'mermaid'|'drawio', filePath: string, content?: string, pages?: Array<object>}} init 标签初始内容
 	 */
 	function openInTab(init) {
+		// 打开新文件会切换标签，先关闭可能存在的在线编辑器
+		if (onlineEditor.tabId !== null && !requestCloseOnlineEditor()) {
+			return;
+		}
 		const existing = findTabByPath(init.filePath);
 		if (existing) {
 			activateTab(existing.id);
@@ -737,6 +826,259 @@
 	}
 
 	/**
+	 * 在线可视化编辑入口。
+	 * mermaid打开官方Mermaid Live Editor；drawio在应用内嵌draw.io编辑器。
+	 * @returns {Promise<void>} 打开结束
+	 */
+	async function openOnlineEditor() {
+		const tab = activeTab();
+		if (!tab) {
+			showToast('请先打开文件', {error: true});
+			return;
+		}
+		if (tab.mode === 'mermaid') {
+			const content = el.editor.value;
+			if (!content.trim()) {
+				showToast('没有可在线编辑的mermaid代码', {error: true});
+				return;
+			}
+			el.btnOnlineEdit.disabled = true;
+			try {
+				const result = await window.api.openMermaidLive({content, theme: state.theme});
+				if (!result.ok) {
+					showToast(result.error || '打开Mermaid在线编辑器失败', {error: true});
+					return;
+				}
+				setStatus('已在浏览器打开Mermaid Live Editor');
+				showToast('已打开Mermaid Live Editor，编辑完成后可复制代码回本工具');
+			} finally {
+				el.btnOnlineEdit.disabled = false;
+			}
+			return;
+		}
+		openDrawioOnlineEditor(tab);
+	}
+
+	/**
+	 * 在应用内打开draw.io在线编辑器并预载当前文件的所有页面。
+	 * @param {TabState} tab drawio标签
+	 */
+	function openDrawioOnlineEditor(tab) {
+		const xml = buildDrawioMxfile(tab);
+		if (!xml) {
+			showToast('当前文件没有可在线编辑的页面', {error: true});
+			return;
+		}
+		// 切换编辑对象前先关闭上一个编辑器，避免回写到错误标签
+		requestCloseOnlineEditor(true);
+		onlineEditor.tabId = tab.id;
+		onlineEditor.originalXml = xml;
+		onlineEditor.latestXml = xml;
+		onlineEditor.dirty = false;
+		onlineEditor.pendingLoad = {xml, title: tabTitle(tab)};
+		el.onlineEditorTitle.textContent = `在线可视化编辑 - ${tabTitle(tab)}`;
+		el.onlineEditorStatus.textContent = '正在加载draw.io在线编辑器…';
+		el.onlineEditor.hidden = false;
+		if (onlineEditor.frameReady) {
+			flushOnlineLoad();
+			return;
+		}
+		// 每次打开都重新加载编辑页，获得干净的编辑器实例
+		el.onlineEditorFrame.src = 'pages/drawio-edit.html';
+	}
+
+	/**
+	 * 把等待中的图形数据下发给内嵌编辑页。
+	 */
+	function flushOnlineLoad() {
+		if (!onlineEditor.frameReady || !onlineEditor.pendingLoad) {
+			return;
+		}
+		const payload = onlineEditor.pendingLoad;
+		onlineEditor.pendingLoad = null;
+		sendToOnlineEditor('drawio-load', payload);
+	}
+
+	/**
+	 * 向内嵌编辑页发送消息。
+	 * @param {string} type 消息类型
+	 * @param {object} [payload] 消息内容
+	 */
+	function sendToOnlineEditor(type, payload) {
+		const frameWindow = el.onlineEditorFrame.contentWindow;
+		if (frameWindow) {
+			frameWindow.postMessage({type, payload: payload || {}}, '*');
+		}
+	}
+
+	/**
+	 * 处理drawio在线编辑器回传的消息。
+	 * 只接受当前内嵌编辑页发来的消息，避免预览页的消息误入。
+	 * @param {MessageEvent} event 消息事件
+	 */
+	function handleOnlineEditorMessage(event) {
+		if (el.onlineEditor.hidden) {
+			return;
+		}
+		const frameWindow = el.onlineEditorFrame.contentWindow;
+		if (!frameWindow || event.source !== frameWindow) {
+			return;
+		}
+		const data = event.data || {};
+		const payload = data.payload || {};
+		switch (data.type) {
+			case 'ready':
+				onlineEditor.frameReady = true;
+				flushOnlineLoad();
+				break;
+			case 'drawio-ready':
+				el.onlineEditorStatus.textContent = '可直接拖拽编辑，完成后点击编辑器内的“保存”回写文件';
+				break;
+			case 'drawio-autosave':
+				handleDrawioAutosave(payload);
+				break;
+			case 'drawio-save':
+				saveDrawioFromEditor(payload);
+				break;
+			case 'drawio-exit':
+				requestCloseOnlineEditor(true);
+				break;
+			case 'drawio-error':
+				el.onlineEditorStatus.textContent = payload.message || '在线编辑器出错';
+				showToast(payload.message || '在线编辑器出错', {error: true});
+				break;
+			default:
+				break;
+		}
+	}
+
+	/**
+	 * 处理在线编辑器的自动保存事件，只更新内存中的最新内容与未保存标记。
+	 * @param {{xml?: string}} payload 编辑器回传的内容
+	 */
+	function handleDrawioAutosave(payload) {
+		const xml = String((payload && payload.xml) || '');
+		if (!xml || xml === onlineEditor.latestXml) {
+			return;
+		}
+		onlineEditor.latestXml = xml;
+		onlineEditor.dirty = xml !== onlineEditor.originalXml;
+		const tab = state.tabs.find((item) => item.id === onlineEditor.tabId);
+		updateTabDirty(tab, onlineEditor.dirty);
+	}
+
+	/**
+	 * 把在线编辑器的保存内容回写到本地文件，并刷新预览。
+	 * @param {{xml?: string, exit?: boolean}} payload 编辑器回传的内容
+	 * @returns {Promise<void>} 保存结束
+	 */
+	async function saveDrawioFromEditor(payload) {
+		const tab = state.tabs.find((item) => item.id === onlineEditor.tabId);
+		const xml = String((payload && payload.xml) || '');
+		if (!tab || tab.mode !== 'drawio' || !xml.trim()) {
+			sendOnlineSaveResult(false, '没有可保存的图形内容');
+			showToast('在线编辑器没有返回可保存的内容', {error: true});
+			return;
+		}
+		el.onlineEditorStatus.textContent = '正在保存…';
+		const result = await window.api.saveDrawio({
+			path: tab.filePath,
+			name: fileBaseName(tab.filePath),
+			xml
+		});
+		if (!result.ok) {
+			const message = result.canceled ? '已取消保存' : (result.error || '保存失败');
+			el.onlineEditorStatus.textContent = message;
+			if (!result.canceled) {
+				showToast(message, {error: true});
+			}
+			sendOnlineSaveResult(false, message);
+			return;
+		}
+		tab.filePath = result.filePath;
+		const parsed = await window.api.parseDrawio(result.filePath);
+		if (parsed.ok) {
+			tab.pages = parsed.pages || [];
+			tab.currentPage = Math.min(tab.currentPage, Math.max(tab.pages.length - 1, 0));
+		}
+		updateTabDirty(tab, false);
+		onlineEditor.dirty = false;
+		onlineEditor.originalXml = xml;
+		onlineEditor.latestXml = xml;
+		updateFileLabel();
+		renderTabBar();
+		updatePageSelect();
+		renderNow();
+		setStatus('在线编辑内容已保存');
+		showToast(`已保存 ${result.filePath}`, {actionPath: result.filePath});
+		sendOnlineSaveResult(true, '已保存到本地文件');
+		requestCloseOnlineEditor(true);
+	}
+
+	/**
+	 * 把保存结果通知内嵌编辑页，用于更新编辑器状态栏。
+	 * @param {boolean} ok 是否保存成功
+	 * @param {string} message 提示文案
+	 */
+	function sendOnlineSaveResult(ok, message) {
+		if (el.onlineEditor.hidden) {
+			return;
+		}
+		sendToOnlineEditor('drawio-save-result', {ok, message});
+	}
+
+	/**
+	 * 关闭在线编辑器。
+	 * @param {boolean} [force] 为true时忽略未保存确认，直接关闭
+	 * @returns {boolean} 是否已关闭；用户在确认框中选择取消时返回false
+	 */
+	function requestCloseOnlineEditor(force) {
+		if (el.onlineEditor.hidden) {
+			return true;
+		}
+		if (!force && onlineEditor.dirty &&
+			!window.confirm('在线编辑器中的修改还没有保存，确定关闭吗？')) {
+			return false;
+		}
+		el.onlineEditor.hidden = true;
+		el.onlineEditorFrame.src = 'about:blank';
+		onlineEditor.tabId = null;
+		onlineEditor.frameReady = false;
+		onlineEditor.pendingLoad = null;
+		onlineEditor.originalXml = '';
+		onlineEditor.latestXml = '';
+		onlineEditor.dirty = false;
+		el.onlineEditorStatus.textContent = '';
+		el.onlineEditorTitle.textContent = '在线可视化编辑';
+		el.btnOnlineEdit.disabled = false;
+		return true;
+	}
+
+	/**
+	 * 在内嵌编辑器不可用时，用系统浏览器打开draw.io网页版编辑同一份内容。
+	 * @returns {Promise<void>} 打开结束
+	 */
+	async function openDrawioInBrowser() {
+		const tab = state.tabs.find((item) => item.id === onlineEditor.tabId) || activeTab();
+		if (!tab || tab.mode !== 'drawio') {
+			showToast('当前没有可打开的drawio图', {error: true});
+			return;
+		}
+		const xml = onlineEditor.latestXml || buildDrawioMxfile(tab);
+		if (!xml) {
+			showToast('没有可打开的drawio内容', {error: true});
+			return;
+		}
+		const result = await window.api.openDrawioWeb({xml});
+		if (!result.ok) {
+			showToast(result.error || '打开draw.io失败', {error: true});
+			return;
+		}
+		setStatus('已在浏览器打开draw.io在线编辑器');
+		showToast('已打开draw.io，编辑完成后可导出文件再拖回本工具');
+	}
+
+	/**
 	 * 打开或关闭历史记录清单。
 	 * @returns {Promise<void>} 处理结束
 	 */
@@ -912,6 +1254,12 @@
 			return;
 		}
 		if (event.key === 'Escape') {
+			// 在线编辑器是模态层，优先响应Esc关闭
+			if (!el.onlineEditor.hidden) {
+				event.preventDefault();
+				requestCloseOnlineEditor();
+				return;
+			}
 			hideMenu();
 			hideHistory();
 			hideToast();
@@ -966,6 +1314,9 @@
 		el.btnSave.addEventListener('click', saveCurrent);
 		el.btnSaveAs.addEventListener('click', saveCurrentAs);
 		el.btnConvert.addEventListener('click', convertCurrent);
+		el.btnOnlineEdit.addEventListener('click', openOnlineEditor);
+		el.onlineEditorClose.addEventListener('click', () => requestCloseOnlineEditor());
+		el.onlineEditorBrowser.addEventListener('click', openDrawioInBrowser);
 		el.btnPng.addEventListener('click', exportPng);
 		el.btnMenu.addEventListener('click', (event) => {
 			event.stopPropagation();
@@ -1007,6 +1358,7 @@
 			renderNow();
 		});
 		window.addEventListener('message', onPreviewMessage);
+		window.addEventListener('message', handleOnlineEditorMessage);
 		window.addEventListener('keydown', onKeyDown);
 		window.addEventListener('dragover', onDragOver);
 		window.addEventListener('drop', onDrop);

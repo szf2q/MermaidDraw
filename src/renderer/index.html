@@ -26,6 +26,7 @@
 			</div>
 			<div class="group">
 				<button id="btn-convert">转为Drawio</button>
+				<button id="btn-online-edit" title="在在线可视化编辑器中编辑当前图">在线编辑</button>
 				<button id="btn-png">导出PNG</button>
 			</div>
 			<div class="group">
@@ -98,6 +99,22 @@
 			<button id="menu-install">安装右键菜单</button>
 			<button id="menu-uninstall">移除右键菜单</button>
 			<button id="menu-about">关于</button>
+		</div>
+
+		<div class="online-editor" id="online-editor" hidden>
+			<div class="online-editor-panel">
+				<div class="online-editor-head">
+					<span class="online-editor-title" id="online-editor-title">在线可视化编辑</span>
+					<span class="hint" id="online-editor-status"></span>
+					<div class="online-editor-actions">
+						<button id="online-editor-browser" title="在系统浏览器中打开draw.io编辑同一份内容">在浏览器中打开</button>
+						<button id="online-editor-close">关闭</button>
+					</div>
+				</div>
+				<div class="online-editor-body">
+					<iframe id="online-editor-frame" title="在线可视化编辑器"></iframe>
+				</div>
+			</div>
 		</div>
 	</div>
 	<script src="app.js"></script>

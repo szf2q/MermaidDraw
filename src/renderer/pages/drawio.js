@@ -110,6 +110,26 @@
 	}
 
 	/**
+	 * 解除viewer内部容器对svg的裁剪。
+	 * GraphViewer初始化时按当时的图形范围给容器（svg的父元素）写死了宽高并带overflow:hidden，
+	 * 而HTML标签排版完成后内容会比该范围大（右侧、下侧外扩），于是最右与最下形状的描边被容器裁掉。
+	 * svg已按内容重新定尺寸，容器同步为同样的尺寸并放开裁剪，边框才能完整显示。
+	 * @param {SVGSVGElement} svg viewer生成的svg
+	 * @param {{width: number, height: number}} size 内容像素尺寸
+	 * @returns {void}
+	 */
+	function releaseContainerClip(svg, size) {
+		let element = svg.parentElement;
+		// 只处理svg与#content之间的viewer容器层，#content之上的裁剪属于预览视口，保持原状
+		while (element && element !== content) {
+			element.style.overflow = 'visible';
+			element.style.width = `${size.width}px`;
+			element.style.height = `${size.height}px`;
+			element = element.parentElement;
+		}
+	}
+
+	/**
 	 * 渲染一页drawio内容。
 	 * @param {{content: string}} payload 渲染参数，content为mxGraphModel XML
 	 * @returns {Promise<void>} 渲染结束
@@ -155,6 +175,7 @@
 				throw new Error('drawio viewer未生成图像，可能是图形数据损坏');
 			}
 			const size = applyContentSize(svg, computeContentRect(viewer.graph));
+			releaseContainerClip(svg, size);
 			window.Preview.setNaturalSize(size.width, size.height);
 			window.Preview.reportRendered(size);
 		} catch (error) {

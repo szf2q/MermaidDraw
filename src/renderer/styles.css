@@ -98,6 +98,32 @@ button.primary:hover {
 	color: #ffffff;
 }
 
+/* 打开按钮与历史下拉箭头合并为一个组合按钮，中间不留缝隙 */
+.split-btn {
+	display: inline-flex;
+}
+
+.split-btn button.primary {
+	border-top-right-radius: 0;
+	border-bottom-right-radius: 0;
+}
+
+.split-btn .split-arrow {
+	padding: 5px 7px;
+	border-color: #1668dc;
+	background: #1668dc;
+	color: #ffffff;
+	line-height: 1;
+	border-top-left-radius: 0;
+	border-bottom-left-radius: 0;
+}
+
+.split-btn .split-arrow:hover {
+	background: #3c89e8;
+	border-color: #3c89e8;
+	color: #ffffff;
+}
+
 select {
 	padding: 4px 6px;
 	border: 1px solid #d0d3d9;

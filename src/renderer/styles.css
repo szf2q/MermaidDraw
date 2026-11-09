@@ -420,8 +420,8 @@ label.check {
 	text-align: left;
 }
 
-/* 在线可视化编辑模态层：覆盖整个主界面，内部嵌入draw.io官方编辑器 */
-.online-editor {
+/* 应用内离线可视化编辑模态层：覆盖主界面，内部嵌入本地drawio编辑页 */
+.visual-editor {
 	position: fixed;
 	inset: 0;
 	z-index: 40;
@@ -431,7 +431,7 @@ label.check {
 	background: rgba(15, 23, 42, 0.38);
 }
 
-.online-editor-panel {
+.visual-editor-panel {
 	width: min(1400px, 94vw);
 	height: 92vh;
 	display: flex;
@@ -442,7 +442,7 @@ label.check {
 	overflow: hidden;
 }
 
-.online-editor-head {
+.visual-editor-head {
 	display: flex;
 	align-items: center;
 	gap: 12px;
@@ -451,24 +451,24 @@ label.check {
 	background: #fafbfc;
 }
 
-.online-editor-title {
+.visual-editor-title {
 	font-weight: 600;
 	color: #1f2329;
 }
 
-.online-editor-actions {
+.visual-editor-actions {
 	margin-left: auto;
 	display: flex;
 	gap: 8px;
 }
 
-.online-editor-body {
+.visual-editor-body {
 	position: relative;
 	flex: 1;
 	min-height: 0;
 }
 
-#online-editor-frame {
+#visual-editor-frame {
 	position: absolute;
 	inset: 0;
 	width: 100%;

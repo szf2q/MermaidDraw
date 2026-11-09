@@ -11,7 +11,6 @@ const {parseCliArgs, formatHelp} = require('./cli');
 const {parseDrawioBuffer, isDrawioFile, isMermaidFile} = require('./drawio-file');
 const {convertMermaidFile, convertMermaidText, convertMermaidToDirectory, probeConverter, shutdownConverter} = require('./convert');
 const {capturePng} = require('./capture');
-const {buildMermaidLiveUrl, buildDrawioWebUrl, isAllowedExternalUrl} = require('./online');
 const {registerContextMenu, unregisterContextMenu, isContextMenuRegistered} = require('./context-menu');
 
 /** 允许打开的文件大小上限，超过后拒绝以免内存耗尽 */
@@ -363,25 +362,7 @@ async function getLastOpenDir() {
 }
 
 /**
- * 在系统默认浏览器中打开在线编辑器地址。
- * 地址必须命中外链白名单，避免渲染进程借shell打开任意页面。
- * @param {string} url 待打开的地址
- * @returns {Promise<{ok: boolean, url?: string, error?: string}>} 打开结果
- */
-async function openTrustedExternalUrl(url) {
-	if (!isAllowedExternalUrl(url)) {
-		return {ok: false, error: '在线编辑器地址不在允许范围内'};
-	}
-	try {
-		await shell.openExternal(url);
-		return {ok: true, url};
-	} catch (error) {
-		return {ok: false, error: error.message};
-	}
-}
-
-/**
- * 保存在线编辑器回写的drawio内容。
+ * 保存应用内可视化编辑器回写的drawio内容。
  * 已有路径直接覆盖；未保存过的新内容弹另存为对话框补一个路径。
  * @param {{path?: string|null, name?: string, xml?: string}} payload 保存参数
  * @returns {Promise<{ok: boolean, filePath?: string, canceled?: boolean, error?: string}>} 保存结果
@@ -390,13 +371,13 @@ async function handleSaveDrawio(payload) {
 	try {
 		const xml = String((payload && payload.xml) || '');
 		if (!xml.trim()) {
-			return {ok: false, error: '在线编辑器没有返回可保存的内容'};
+			return {ok: false, error: '编辑器没有返回可保存的内容'};
 		}
 		let outPath = payload && payload.path ? payload.path : null;
 		if (!outPath) {
 			const baseName = sanitizeFileBase((payload && payload.name) || 'untitled');
 			const saveResult = await dialog.showSaveDialog(mainWindow, {
-				title: '保存在线编辑结果',
+				title: '保存编辑结果',
 				defaultPath: path.join(app.getPath('documents'), `${baseName}.drawio`),
 				filters: [{name: 'Drawio文件', extensions: ['drawio']}]
 			});
@@ -506,19 +487,7 @@ function registerIpc() {
 	ipcMain.handle('convert:drawio', async (event, payload) => handleConvertToDrawio(payload));
 	ipcMain.handle('export:png', async (event, payload) => handleExportPng(payload));
 
-	// mermaid在线编辑：生成mermaid.live预载链接后在系统浏览器打开
-	ipcMain.handle('online:mermaid', async (event, payload) => {
-		const config = payload || {};
-		return openTrustedExternalUrl(buildMermaidLiveUrl(config.content, config.theme));
-	});
-
-	// drawio在线编辑兜底：在内嵌编辑器不可用时，用浏览器打开draw.io网页版
-	ipcMain.handle('online:drawio', async (event, payload) => {
-		const config = payload || {};
-		return openTrustedExternalUrl(buildDrawioWebUrl(config.xml));
-	});
-
-	// 在线编辑器把图形回写到本地文件
+	// 应用内离线可视化编辑器把修改后的图形回写到本地文件
 	ipcMain.handle('drawio:save', async (event, payload) => handleSaveDrawio(payload));
 
 	ipcMain.handle('menu:install', async () => registerContextMenu({exe: process.execPath, appRoot: app.isPackaged ? null : getAppRoot()}));

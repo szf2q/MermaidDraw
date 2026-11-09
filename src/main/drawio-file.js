@@ -59,14 +59,16 @@ function extractGraphModel(xml) {
  * @param {string} attrsText diagram标签属性串
  * @param {string} inner diagram标签内部内容
  * @param {number} index 页序号，用于缺省命名
- * @returns {{id: string, name: string, xml: string|null, invalid?: boolean}} 页面对象
+ * @returns {{id: string, name: string, xml: string|null, raw: string, invalid?: boolean}} 页面对象
  */
 function parseDiagram(attrsText, inner, index) {
 	const attrs = parseAttributes(attrsText);
 	const page = {
 		id: attrs.id || `page-${index + 1}`,
 		name: attrs.name || `Page-${index + 1}`,
-		xml: null
+		xml: null,
+		// 保留原始页面内容：解析失败的页面在回写文件时原样保留，避免编辑一页导致其他页丢失
+		raw: inner.trim()
 	};
 
 	const direct = extractGraphModel(inner);
@@ -96,7 +98,7 @@ function parseDiagram(attrsText, inner, index) {
  * 解析.drawio文件文本。
  * @param {string} text 文件文本内容
  * @param {string} [fileName] 文件名，用于纯mxGraphModel文件的页面命名
- * @returns {{pages: Array<{id: string, name: string, xml: string|null, invalid?: boolean}>, error?: string}}
+ * @returns {{pages: Array<{id: string, name: string, xml: string|null, raw?: string, invalid?: boolean}>, error?: string}}
  *          页面列表；不是合法drawio结构时返回error
  */
 function parseDrawioText(text, fileName) {
@@ -111,7 +113,8 @@ function parseDrawioText(text, fileName) {
 				{
 					id: 'page-1',
 					name: String(fileName || 'Page-1').replace(/\.(drawio|dio|xml)$/i, ''),
-					xml: extractGraphModel(content)
+					xml: extractGraphModel(content),
+					raw: content
 				}
 			]
 		};

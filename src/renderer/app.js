@@ -654,6 +654,12 @@
 			const note = result.mode === 'image' ? '，该图类型无法原生转换，已按图片嵌入' : '';
 			const warning = result.warning ? `，${result.warning}` : '';
 			showToast(`已生成 ${result.outPath}${note}${warning}`, {actionPath: result.outPath});
+			// 同路径的旧标签保留的是上一次的转换结果，先关闭再按新文件打开
+			const existing = findTabByPath(result.outPath);
+			if (existing) {
+				closeTab(existing.id);
+			}
+			await openPath(result.outPath);
 		} finally {
 			el.btnConvert.disabled = !(activeTab() && activeTab().mode === 'mermaid');
 		}

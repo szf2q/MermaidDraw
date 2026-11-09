@@ -155,10 +155,11 @@
 			// 关闭viewer自带的导航与自适应，由公共层统一做缩放，保证截图尺寸可控；
 			// check-visible-state必须关闭：容器在隐藏窗口或绝对定位下offsetWidth为0，
 			// 开启时viewer会等容器可见才渲染，导致预览与截图都拿不到SVG。
+			// 不传toolbar：viewer只要收到非null的toolbar就会生成一条26px高的工具条容器，
+			// 空字符串同样会生成，鼠标移入时以灰底显现，表现为图形上方多出一条灰框。
 			const viewer = new window.GraphViewer(holder, doc.documentElement, {
 				nav: false,
 				resize: false,
-				toolbar: '',
 				border: 0,
 				'auto-fit': false,
 				'auto-crop': false,

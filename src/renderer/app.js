@@ -59,10 +59,11 @@
 	 */
 	function cacheElements() {
 		const ids = [
-			'app', 'tabbar', 'btn-open', 'btn-save', 'btn-save-as', 'file-name', 'dirty-mark', 'page-group',
-			'page-select', 'btn-convert', 'btn-png', 'theme-select', 'scale-select', 'transparent', 'zoom-select',
-			'btn-menu', 'editor', 'preview', 'preview-title', 'preview-meta', 'status-text', 'status-size',
-			'toast', 'toast-text', 'toast-action', 'menu-popup', 'menu-install', 'menu-uninstall', 'menu-about'
+			'app', 'tabbar', 'btn-open', 'btn-history', 'btn-save', 'btn-save-as', 'file-name', 'dirty-mark',
+			'page-group', 'page-select', 'btn-convert', 'btn-png', 'theme-select', 'scale-select', 'transparent',
+			'zoom-select', 'btn-menu', 'editor', 'preview', 'preview-title', 'preview-meta', 'status-text',
+			'status-size', 'toast', 'toast-text', 'toast-action', 'history-popup', 'history-list', 'history-clear',
+			'menu-popup', 'menu-install', 'menu-uninstall', 'menu-about'
 		];
 		ids.forEach((id) => {
 			el[toCamel(id)] = document.getElementById(id);
@@ -730,6 +731,75 @@
 	}
 
 	/**
+	 * 打开或关闭历史记录清单。
+	 * @returns {Promise<void>} 处理结束
+	 */
+	async function toggleHistory() {
+		if (!el.historyPopup.hidden) {
+			hideHistory();
+			return;
+		}
+		hideMenu();
+		const result = await window.api.historyList();
+		renderHistory(result && result.ok ? result.items : []);
+		el.historyPopup.hidden = false;
+	}
+
+	/**
+	 * 渲染历史记录清单。
+	 * @param {string[]} items 文件绝对路径列表，最新在前
+	 */
+	function renderHistory(items) {
+		el.historyList.innerHTML = '';
+		if (!items || items.length === 0) {
+			const empty = document.createElement('div');
+			empty.className = 'history-empty';
+			empty.textContent = '暂无历史记录';
+			el.historyList.appendChild(empty);
+			return;
+		}
+		items.forEach((filePath) => {
+			const item = document.createElement('button');
+			item.type = 'button';
+			item.className = 'history-item';
+			item.title = filePath;
+			const name = document.createElement('span');
+			name.className = 'history-name';
+			name.textContent = String(filePath).split(/[\\/]/).pop() || filePath;
+			const dir = document.createElement('span');
+			dir.className = 'history-path';
+			dir.textContent = String(filePath).replace(/[\\/][^\\/]+$/, '');
+			item.appendChild(name);
+			item.appendChild(dir);
+			item.addEventListener('click', () => {
+				hideHistory();
+				openPath(filePath);
+			});
+			el.historyList.appendChild(item);
+		});
+	}
+
+	/**
+	 * 清空历史记录清单。
+	 * @returns {Promise<void>} 处理结束
+	 */
+	async function clearHistory() {
+		const result = await window.api.historyClear();
+		if (!result.ok) {
+			showToast(result.error || '清空历史记录失败', {error: true});
+			return;
+		}
+		renderHistory([]);
+	}
+
+	/**
+	 * 隐藏历史记录清单。
+	 */
+	function hideHistory() {
+		el.historyPopup.hidden = true;
+	}
+
+	/**
 	 * 安装资源管理器右键菜单。
 	 * @returns {Promise<void>} 安装结束
 	 */
@@ -837,6 +907,7 @@
 		}
 		if (event.key === 'Escape') {
 			hideMenu();
+			hideHistory();
 			hideToast();
 		}
 	}
@@ -881,6 +952,11 @@
 	 */
 	function bindEvents() {
 		el.btnOpen.addEventListener('click', openByDialog);
+		el.btnHistory.addEventListener('click', (event) => {
+			event.stopPropagation();
+			toggleHistory();
+		});
+		el.historyClear.addEventListener('click', clearHistory);
 		el.btnSave.addEventListener('click', saveCurrent);
 		el.btnSaveAs.addEventListener('click', saveCurrentAs);
 		el.btnConvert.addEventListener('click', convertCurrent);
@@ -929,11 +1005,11 @@
 		window.addEventListener('dragover', onDragOver);
 		window.addEventListener('drop', onDrop);
 		document.addEventListener('click', (event) => {
-			if (el.menuPopup.hidden) {
-				return;
-			}
-			if (!el.menuPopup.contains(event.target) && !el.btnMenu.contains(event.target)) {
+			if (!el.menuPopup.hidden && !el.menuPopup.contains(event.target) && !el.btnMenu.contains(event.target)) {
 				hideMenu();
+			}
+			if (!el.historyPopup.hidden && !el.historyPopup.contains(event.target) && !el.btnHistory.contains(event.target)) {
+				hideHistory();
 			}
 		});
 	}

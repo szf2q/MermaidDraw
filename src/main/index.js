@@ -16,6 +16,15 @@ const {registerContextMenu, unregisterContextMenu, isContextMenuRegistered} = re
 /** 允许打开的文件大小上限，超过后拒绝以免内存耗尽 */
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
 
+/** 设置文件名，保存在userData目录，用于保存历史打开记录 */
+const SETTINGS_FILE_NAME = 'settings.json';
+
+/** 历史打开记录最多保留的条数 */
+const HISTORY_LIMIT = 15;
+
+/** 历史记录写入串行队列，避免多个文件同时打开时读改写互相覆盖 */
+let historyWriteChain = Promise.resolve();
+
 /** 主窗口实例 */
 let mainWindow = null;
 
@@ -218,6 +227,105 @@ async function exportFileToPng(filePath, options) {
 }
 
 /**
+ * 取设置文件路径。
+ * @returns {string} settings.json的绝对路径
+ */
+function getSettingsPath() {
+	return path.join(app.getPath('userData'), SETTINGS_FILE_NAME);
+}
+
+/**
+ * 读取设置内容。
+ * @returns {Promise<object>} 设置对象；文件不存在或内容损坏时返回空对象
+ */
+async function readSettings() {
+	try {
+		const text = await fs.promises.readFile(getSettingsPath(), 'utf8');
+		const parsed = JSON.parse(text);
+		// 非对象内容视为损坏，回退为空设置，避免后续读取属性时报错
+		return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+	} catch (error) {
+		// 首次运行没有设置文件，或文件损坏，都不应阻断打开流程，按空设置处理
+		return {};
+	}
+}
+
+/**
+ * 把设置写回磁盘，写入失败只记录日志。
+ * @param {object} settings 设置对象
+ * @returns {Promise<void>} 写入结束
+ */
+async function writeSettings(settings) {
+	try {
+		await fs.promises.mkdir(path.dirname(getSettingsPath()), {recursive: true});
+		await fs.promises.writeFile(getSettingsPath(), `${JSON.stringify(settings, null, 2)}\n`, 'utf8');
+	} catch (error) {
+		console.error(`保存设置失败: ${error.message}`);
+	}
+}
+
+/**
+ * 记录一次成功打开的文件，最新记录排在最前并去重。
+ * @param {string} filePath 文件绝对路径
+ * @returns {Promise<void>} 记录结束
+ */
+function addHistoryEntry(filePath) {
+	// 串行执行读改写，避免拖入多个文件时并发写入丢失记录
+	historyWriteChain = historyWriteChain.then(async () => {
+		const settings = await readSettings();
+		const history = Array.isArray(settings.history)
+			? settings.history.filter((item) => typeof item === 'string' && item)
+			: [];
+		// Windows路径不区分大小写，去重时统一按小写比较
+		const key = String(filePath).toLowerCase();
+		settings.history = [filePath, ...history.filter((item) => item.toLowerCase() !== key)]
+			.slice(0, HISTORY_LIMIT);
+		await writeSettings(settings);
+	}).catch((error) => {
+		console.error(`保存历史记录失败: ${error.message}`);
+	});
+	return historyWriteChain;
+}
+
+/**
+ * 列出仍存在的历史文件，已删除或移动的路径不返回。
+ * @returns {Promise<string[]>} 文件绝对路径列表，最新在前
+ */
+async function listHistory() {
+	const settings = await readSettings();
+	const history = Array.isArray(settings.history)
+		? settings.history.filter((item) => typeof item === 'string' && item)
+		: [];
+	const items = [];
+	for (const filePath of history) {
+		try {
+			const stat = await fs.promises.stat(filePath);
+			if (stat.isFile()) {
+				items.push(filePath);
+			}
+		} catch (error) {
+			// 文件已被删除或移动，跳过该条记录即可，不必中断整个清单
+		}
+	}
+	return items;
+}
+
+/**
+ * 清空历史打开记录。
+ * @returns {Promise<void>} 清空结束
+ */
+function clearHistory() {
+	historyWriteChain = historyWriteChain.then(async () => {
+		const settings = await readSettings();
+		settings.history = [];
+		await writeSettings(settings);
+	}).catch((error) => {
+		console.error(`清空历史记录失败: ${error.message}`);
+	});
+	return historyWriteChain;
+}
+
+/**
  * 注册渲染进程IPC。
  */
 function registerIpc() {
@@ -239,6 +347,9 @@ function registerIpc() {
 	ipcMain.handle('file:read', async (event, filePath) => {
 		try {
 			const content = await readTextFile(filePath);
+			if (content.ok) {
+				await addHistoryEntry(filePath);
+			}
 			return {...content, filePath};
 		} catch (error) {
 			return {ok: false, error: error.message};
@@ -256,10 +367,17 @@ function registerIpc() {
 			if (parsed.error) {
 				return {ok: false, error: parsed.error};
 			}
+			await addHistoryEntry(filePath);
 			return {ok: true, pages: parsed.pages, filePath};
 		} catch (error) {
 			return {ok: false, error: error.message};
 		}
+	});
+
+	ipcMain.handle('history:list', async () => ({ok: true, items: await listHistory()}));
+	ipcMain.handle('history:clear', async () => {
+		await clearHistory();
+		return {ok: true};
 	});
 
 	ipcMain.handle('file:save', async (event, payload) => {

@@ -92,6 +92,20 @@ contextBridge.exposeInMainWorld('api', {
 		return ipcRenderer.invoke('shell:reveal', filePath);
 	},
 	/**
+	 * 获取历史打开记录。
+	 * @returns {Promise<{ok: boolean, items: string[]}>} 文件绝对路径列表，最新在前
+	 */
+	historyList() {
+		return ipcRenderer.invoke('history:list');
+	},
+	/**
+	 * 清空历史打开记录。
+	 * @returns {Promise<{ok: boolean}>} 结果
+	 */
+	historyClear() {
+		return ipcRenderer.invoke('history:clear');
+	},
+	/**
 	 * 获取应用信息。
 	 * @returns {Promise<{version: string, packaged: boolean, platform: string}>} 信息
 	 */

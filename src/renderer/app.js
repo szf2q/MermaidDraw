@@ -1225,14 +1225,69 @@
 		}
 	}
 
+	/** 已绑定拖放转发的iframe文档，避免同一文档重复注册监听 */
+	const dropBoundDocs = new WeakSet();
+
 	/**
-	 * 处理拖入的文件，每个受支持的文件各开一个标签。
-	 * @param {DragEvent} event 拖拽事件
+	 * 判断拖拽内容是否包含本地文件。
+	 * @param {DataTransfer|null} dataTransfer 拖拽数据
+	 * @returns {boolean} 包含文件时返回true
+	 */
+	function hasFiles(dataTransfer) {
+		if (!dataTransfer) {
+			return false;
+		}
+		if (dataTransfer.files && dataTransfer.files.length > 0) {
+			return true;
+		}
+		return Array.from(dataTransfer.types || []).includes('Files');
+	}
+
+	/**
+	 * 把iframe文档也纳入文件拖放区域。
+	 * 浏览器不会把iframe内的拖拽事件冒泡到父窗口，若不单独监听，
+	 * 文件拖到右侧预览或可视化编辑器上会被iframe吞掉，表现为只有左侧编辑区能打开文件。
+	 * @param {HTMLIFrameElement|null} frame 需要处理的iframe
+	 */
+	function attachFrameDropHandlers(frame) {
+		if (!frame) {
+			return;
+		}
+		let doc = null;
+		try {
+			doc = frame.contentDocument;
+		} catch (error) {
+			// 非同源文档无法访问；本应用的预览页都同源，正常不会走到这里
+			return;
+		}
+		if (!doc || dropBoundDocs.has(doc)) {
+			return;
+		}
+		dropBoundDocs.add(doc);
+		doc.addEventListener('dragover', (event) => {
+			if (!hasFiles(event.dataTransfer)) {
+				return;
+			}
+			event.preventDefault();
+			event.dataTransfer.dropEffect = 'copy';
+		}, true);
+		doc.addEventListener('drop', (event) => {
+			// 只接管外部文件；画布内元素拖拽不带文件，交给页面自身处理
+			if (!hasFiles(event.dataTransfer)) {
+				return;
+			}
+			event.preventDefault();
+			handleDroppedFiles(event.dataTransfer.files);
+		}, true);
+	}
+
+	/**
+	 * 打开拖入的文件列表，每个受支持的文件各开一个标签。
+	 * @param {FileList|File[]} fileList 拖入的文件
 	 * @returns {Promise<void>} 处理结束
 	 */
-	async function onDrop(event) {
-		event.preventDefault();
-		const files = event.dataTransfer ? Array.from(event.dataTransfer.files) : [];
+	async function handleDroppedFiles(fileList) {
+		const files = Array.from(fileList || []);
 		let opened = 0;
 		for (const file of files) {
 			const filePath = window.api.getPathForFile(file);
@@ -1247,6 +1302,16 @@
 		if (opened === 0) {
 			showToast('拖入的文件不是.mmd、.mermaid或.drawio文件', {error: true});
 		}
+	}
+
+	/**
+	 * 处理拖入的文件，每个受支持的文件各开一个标签。
+	 * @param {DragEvent} event 拖拽事件
+	 * @returns {Promise<void>} 处理结束
+	 */
+	async function onDrop(event) {
+		event.preventDefault();
+		await handleDroppedFiles(event.dataTransfer ? event.dataTransfer.files : []);
 	}
 
 	/**
@@ -1309,6 +1374,9 @@
 		window.addEventListener('keydown', onKeyDown);
 		window.addEventListener('dragover', onDragOver);
 		window.addEventListener('drop', onDrop);
+		// iframe内部不会把拖拽事件冒泡到父窗口，每次加载完成后重新接管，保证整个界面都能接收文件
+		el.preview.addEventListener('load', () => attachFrameDropHandlers(el.preview));
+		el.visualEditorFrame.addEventListener('load', () => attachFrameDropHandlers(el.visualEditorFrame));
 		document.addEventListener('click', (event) => {
 			if (!el.menuPopup.hidden && !el.menuPopup.contains(event.target) && !el.btnMenu.contains(event.target)) {
 				hideMenu();

@@ -26,6 +26,7 @@
 			</div>
 			<div class="group">
 				<button id="btn-convert">转为Drawio</button>
+				<button id="btn-visual-edit" title="在应用内离线可视化编辑当前drawio页面" hidden>可视化编辑</button>
 				<button id="btn-png">导出PNG</button>
 			</div>
 			<div class="group">
@@ -95,9 +96,24 @@
 		</div>
 
 		<div class="menu-popup" id="menu-popup" hidden>
-			<button id="menu-install">安装右键菜单</button>
-			<button id="menu-uninstall">移除右键菜单</button>
+			<button id="menu-install">安装右键菜单与文件关联</button>
+			<button id="menu-uninstall">移除右键菜单与文件关联</button>
 			<button id="menu-about">关于</button>
+		</div>
+
+		<div class="visual-editor" id="visual-editor" hidden>
+			<div class="visual-editor-panel">
+				<div class="visual-editor-head">
+					<span class="visual-editor-title" id="visual-editor-title">可视化编辑</span>
+					<span class="hint" id="visual-editor-status"></span>
+					<div class="visual-editor-actions">
+						<button id="visual-editor-close">关闭</button>
+					</div>
+				</div>
+				<div class="visual-editor-body">
+					<iframe id="visual-editor-frame" title="Drawio离线可视化编辑器"></iframe>
+				</div>
+			</div>
 		</div>
 	</div>
 	<script src="app.js"></script>

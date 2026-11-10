@@ -306,7 +306,7 @@ label.check {
 	display: flex;
 	align-items: center;
 	gap: 12px;
-	z-index: 20;
+	z-index: 50;
 	font-size: 13px;
 	line-height: 1.5;
 }
@@ -418,4 +418,61 @@ label.check {
 	border-radius: 0;
 	color: #4e5969;
 	text-align: left;
+}
+
+/* 应用内离线可视化编辑模态层：覆盖主界面，内部嵌入本地drawio编辑页 */
+.visual-editor {
+	position: fixed;
+	inset: 0;
+	z-index: 40;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: rgba(15, 23, 42, 0.38);
+}
+
+.visual-editor-panel {
+	width: min(1400px, 94vw);
+	height: 92vh;
+	display: flex;
+	flex-direction: column;
+	background: #ffffff;
+	border-radius: 8px;
+	box-shadow: 0 18px 48px rgba(0, 0, 0, 0.25);
+	overflow: hidden;
+}
+
+.visual-editor-head {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 8px 12px;
+	border-bottom: 1px solid #e5e6eb;
+	background: #fafbfc;
+}
+
+.visual-editor-title {
+	font-weight: 600;
+	color: #1f2329;
+}
+
+.visual-editor-actions {
+	margin-left: auto;
+	display: flex;
+	gap: 8px;
+}
+
+.visual-editor-body {
+	position: relative;
+	flex: 1;
+	min-height: 0;
+}
+
+#visual-editor-frame {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	border: 0;
+	background: #ffffff;
 }

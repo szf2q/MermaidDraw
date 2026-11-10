@@ -19,7 +19,7 @@
 	 * @property {'mermaid'|'drawio'} mode 文件类型，决定编辑器是否可见与预览页类型
 	 * @property {string|null} filePath 文件绝对路径，未保存的新内容为null
 	 * @property {string} content mermaid源码，切换标签时用于恢复编辑框内容
-	 * @property {Array<{id: string, name: string, xml: string|null, invalid?: boolean}>} pages drawio页面列表
+	 * @property {Array<{id: string, name: string, xml: string|null, raw?: string, invalid?: boolean}>} pages drawio页面列表
 	 * @property {number} currentPage drawio当前页下标
 	 * @property {boolean} dirty mermaid内容是否有未保存修改
 	 */
@@ -55,15 +55,34 @@
 	let toastTimer = null;
 
 	/**
+	 * @typedef {Object} VisualEditorState
+	 * @property {number|null} tabId 正在可视化编辑的标签id
+	 * @property {number} pageIndex 正在编辑的页面下标
+	 * @property {boolean} frameReady 内嵌编辑页是否已就绪，可接收加载指令
+	 * @property {{xml: string, name: string}|null} pendingLoad 等待下发给编辑器的页面数据
+	 * @property {string} originalXml 打开编辑器时的页面XML，用于判断是否有修改
+	 * @property {boolean} dirty 编辑器中是否存在未保存的修改
+	 */
+	const visualEditor = {
+		tabId: null,
+		pageIndex: 0,
+		frameReady: false,
+		pendingLoad: null,
+		originalXml: '',
+		dirty: false
+	};
+
+	/**
 	 * 缓存页面元素。
 	 */
 	function cacheElements() {
 		const ids = [
 			'app', 'tabbar', 'btn-open', 'btn-history', 'btn-save', 'btn-save-as', 'file-name', 'dirty-mark',
-			'page-group', 'page-select', 'btn-convert', 'btn-png', 'theme-select', 'scale-select', 'transparent',
-			'zoom-select', 'btn-menu', 'editor', 'preview', 'preview-title', 'preview-meta', 'status-text',
+			'page-group', 'page-select', 'btn-convert', 'btn-visual-edit', 'btn-png', 'theme-select', 'scale-select',
+			'transparent', 'zoom-select', 'btn-menu', 'editor', 'preview', 'preview-title', 'preview-meta', 'status-text',
 			'status-size', 'toast', 'toast-text', 'toast-action', 'history-popup', 'history-list', 'history-clear',
-			'menu-popup', 'menu-install', 'menu-uninstall', 'menu-about'
+			'menu-popup', 'menu-install', 'menu-uninstall', 'menu-about',
+			'visual-editor', 'visual-editor-title', 'visual-editor-status', 'visual-editor-close', 'visual-editor-frame'
 		];
 		ids.forEach((id) => {
 			el[toCamel(id)] = document.getElementById(id);
@@ -105,6 +124,61 @@
 	function fileBaseName(filePath) {
 		const name = String(filePath || '').split(/[\\/]/).pop() || '';
 		return name.replace(/\.(mmd|mermaid|drawio|dio)$/i, '') || 'untitled';
+	}
+
+	/**
+	 * 转义XML属性值，避免页面名中的特殊字符破坏mxfile结构。
+	 * @param {string} value 原始文本
+	 * @returns {string} 转义后的文本
+	 */
+	function escapeXmlAttr(value) {
+		return String(value)
+			.replace(/&/g, '&amp;')
+			.replace(/"/g, '&quot;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;');
+	}
+
+	/**
+	 * 把标签内的所有drawio页面拼成完整mxfile，供离线编辑器回写时保持多页结构。
+	 * 解析失败的页面没有mxGraphModel，回退使用解析时保留的原始内容，避免编辑一页导致其他页丢失。
+	 * @param {TabState} tab 目标标签
+	 * @returns {string} mxfile文本，没有可编辑页面时返回空字符串
+	 */
+	function buildDrawioMxfile(tab) {
+		if (!tab || !Array.isArray(tab.pages)) {
+			return '';
+		}
+		const validPages = tab.pages.filter((page) => page && (page.xml || page.raw));
+		if (validPages.length === 0) {
+			return '';
+		}
+		const diagrams = validPages.map((page, index) => {
+			const id = escapeXmlAttr(page.id || `page-${index + 1}`);
+			const name = escapeXmlAttr(page.name || `Page-${index + 1}`);
+			const body = page.xml || page.raw;
+			return `<diagram id="${id}" name="${name}">${body}</diagram>`;
+		});
+		return `<mxfile host="app.diagrams.net" type="device">${diagrams.join('')}</mxfile>`;
+	}
+
+	/**
+	 * 更新指定标签的未保存标记及标签栏显示。
+	 * @param {TabState} tab 目标标签
+	 * @param {boolean} dirty 是否已修改
+	 */
+	function updateTabDirty(tab, dirty) {
+		if (!tab) {
+			return;
+		}
+		tab.dirty = dirty;
+		if (tab.id === state.activeTabId) {
+			el.dirtyMark.hidden = !dirty;
+		}
+		const node = el.tabbar.querySelector(`.tab[data-id="${tab.id}"]`);
+		if (node) {
+			node.classList.toggle('dirty', dirty);
+		}
 	}
 
 	/**
@@ -196,6 +270,10 @@
 		if (!tab) {
 			return;
 		}
+		// 可视化编辑器覆盖在当前标签上，切换标签前必须先关闭，避免回写目标错乱
+		if (visualEditor.tabId !== null && visualEditor.tabId !== tabId && !requestCloseVisualEditor()) {
+			return;
+		}
 		syncEditorToTab();
 		state.activeTabId = tab.id;
 		applyTabToUi(tab);
@@ -213,6 +291,10 @@
 		const tab = state.tabs[index];
 		if (tab.dirty && !window.confirm(`“${tabTitle(tab)}”有未保存修改，关闭后这些修改会丢失，确定关闭吗？`)) {
 			return;
+		}
+		// 关闭正在可视化编辑的标签时一并销毁编辑器，前面的确认已经覆盖未保存修改
+		if (visualEditor.tabId === tabId) {
+			requestCloseVisualEditor(true);
 		}
 		syncEditorToTab();
 		state.tabs.splice(index, 1);
@@ -360,6 +442,9 @@
 		el.btnConvert.disabled = mode !== 'mermaid';
 		el.btnSave.disabled = mode === 'drawio';
 		el.btnSaveAs.disabled = mode === 'drawio';
+		// 可视化编辑只对drawio页面有意义；mermaid在左侧源码编辑器中离线编辑并实时预览
+		el.btnVisualEdit.hidden = mode !== 'drawio';
+		el.btnVisualEdit.disabled = false;
 		loadPreview(mode);
 	}
 
@@ -480,6 +565,10 @@
 	 * @param {{mode: 'mermaid'|'drawio', filePath: string, content?: string, pages?: Array<object>}} init 标签初始内容
 	 */
 	function openInTab(init) {
+		// 打开新文件会切换标签，先关闭可能存在的可视化编辑器
+		if (visualEditor.tabId !== null && !requestCloseVisualEditor()) {
+			return;
+		}
 		const existing = findTabByPath(init.filePath);
 		if (existing) {
 			activateTab(existing.id);
@@ -737,6 +826,207 @@
 	}
 
 	/**
+	 * 打开应用内离线可视化编辑器，编辑当前drawio页面。
+	 * 编辑器使用随应用打包的drawio内核，不依赖任何外部在线服务。
+	 * @returns {void} 无返回值
+	 */
+	function openVisualEditor() {
+		const tab = activeTab();
+		if (!tab || tab.mode !== 'drawio') {
+			showToast('仅drawio文件支持可视化编辑', {error: true});
+			return;
+		}
+		const page = tab.pages[tab.currentPage];
+		if (!page || !page.xml) {
+			showToast('当前页没有可编辑的内容', {error: true});
+			return;
+		}
+		// 切换编辑对象前先关闭上一个编辑器，避免回写到错误标签
+		requestCloseVisualEditor(true);
+		visualEditor.tabId = tab.id;
+		visualEditor.pageIndex = tab.currentPage;
+		visualEditor.frameReady = false;
+		visualEditor.originalXml = page.xml;
+		visualEditor.dirty = false;
+		visualEditor.pendingLoad = {xml: page.xml, name: page.name || `Page-${tab.currentPage + 1}`};
+		el.visualEditorTitle.textContent = `可视化编辑 - ${tabTitle(tab)}`;
+		el.visualEditorStatus.textContent = '正在加载编辑器…';
+		el.visualEditor.hidden = false;
+		// 每次打开都重新加载本地编辑页，获得干净的编辑器实例
+		el.visualEditorFrame.src = 'pages/drawio-editor.html';
+	}
+
+	/**
+	 * 把等待中的页面数据下发给内嵌编辑页。
+	 * @returns {void} 无返回值
+	 */
+	function flushVisualLoad() {
+		if (!visualEditor.frameReady || !visualEditor.pendingLoad) {
+			return;
+		}
+		const payload = visualEditor.pendingLoad;
+		visualEditor.pendingLoad = null;
+		sendToVisualEditor('load', payload);
+	}
+
+	/**
+	 * 向内嵌编辑页发送消息。
+	 * @param {string} type 消息类型
+	 * @param {object} [payload] 消息内容
+	 * @returns {void} 无返回值
+	 */
+	function sendToVisualEditor(type, payload) {
+		const frameWindow = el.visualEditorFrame.contentWindow;
+		if (frameWindow) {
+			frameWindow.postMessage({type, payload: payload || {}}, '*');
+		}
+	}
+
+	/**
+	 * 处理drawio编辑页回传的消息。
+	 * 只接受当前内嵌编辑页发来的消息，避免预览页的消息误入。
+	 * @param {MessageEvent} event 消息事件
+	 * @returns {void} 无返回值
+	 */
+	function handleVisualEditorMessage(event) {
+		if (el.visualEditor.hidden) {
+			return;
+		}
+		const frameWindow = el.visualEditorFrame.contentWindow;
+		if (!frameWindow || event.source !== frameWindow) {
+			return;
+		}
+		const data = event.data || {};
+		const payload = data.payload || {};
+		switch (data.type) {
+			case 'ready':
+				visualEditor.frameReady = true;
+				flushVisualLoad();
+				break;
+			case 'loaded':
+				el.visualEditorStatus.textContent = '可拖拽移动/缩放，双击修改文字';
+				break;
+			case 'dirty':
+				handleVisualDirty(payload);
+				break;
+			case 'save':
+				saveVisualEditor(payload);
+				break;
+			case 'close':
+				requestCloseVisualEditor();
+				break;
+			case 'error':
+				el.visualEditorStatus.textContent = payload.message || '编辑器出错';
+				showToast(payload.message || '编辑器出错', {error: true});
+				break;
+			default:
+				break;
+		}
+	}
+
+	/**
+	 * 处理编辑器的修改通知，只更新未保存标记。
+	 * @param {{dirty?: boolean}} payload 编辑器回传的状态
+	 * @returns {void} 无返回值
+	 */
+	function handleVisualDirty(payload) {
+		visualEditor.dirty = payload.dirty !== false;
+		const tab = state.tabs.find((item) => item.id === visualEditor.tabId);
+		updateTabDirty(tab, visualEditor.dirty);
+		el.visualEditorStatus.textContent = visualEditor.dirty ? '有未保存修改' : '已保存';
+	}
+
+	/**
+	 * 把编辑器的当前内容写回本地文件，并刷新预览。
+	 * 只替换当前页的mxGraphModel，其余页面原样保留。
+	 * @param {{xml?: string}} payload 编辑器回传的页面XML
+	 * @returns {Promise<void>} 保存结束
+	 */
+	async function saveVisualEditor(payload) {
+		const tab = state.tabs.find((item) => item.id === visualEditor.tabId);
+		const xml = String((payload && payload.xml) || '');
+		if (!tab || tab.mode !== 'drawio' || !xml.trim()) {
+			sendVisualSaveResult(false, '没有可保存的图形内容');
+			showToast('编辑器没有返回可保存的内容', {error: true});
+			return;
+		}
+		const page = tab.pages[visualEditor.pageIndex];
+		if (!page) {
+			sendVisualSaveResult(false, '当前页面已不存在');
+			showToast('当前页面已不存在，无法保存', {error: true});
+			return;
+		}
+		el.visualEditorStatus.textContent = '正在保存…';
+		page.xml = xml;
+		page.invalid = false;
+		const result = await window.api.saveDrawio({
+			path: tab.filePath,
+			name: fileBaseName(tab.filePath),
+			xml: buildDrawioMxfile(tab)
+		});
+		if (!result.ok) {
+			const message = result.canceled ? '已取消保存' : (result.error || '保存失败');
+			el.visualEditorStatus.textContent = message;
+			if (!result.canceled) {
+				showToast(message, {error: true});
+			}
+			sendVisualSaveResult(false, message);
+			return;
+		}
+		tab.filePath = result.filePath;
+		visualEditor.originalXml = xml;
+		visualEditor.dirty = false;
+		updateTabDirty(tab, false);
+		updateFileLabel();
+		renderTabBar();
+		renderNow();
+		setStatus('可视化编辑内容已保存');
+		el.visualEditorStatus.textContent = '已保存到本地文件';
+		showToast(`已保存 ${result.filePath}`, {actionPath: result.filePath});
+		sendVisualSaveResult(true, '已保存到本地文件');
+	}
+
+	/**
+	 * 把保存结果通知内嵌编辑页，用于更新编辑器状态。
+	 * @param {boolean} ok 是否保存成功
+	 * @param {string} message 提示文案
+	 * @returns {void} 无返回值
+	 */
+	function sendVisualSaveResult(ok, message) {
+		if (el.visualEditor.hidden) {
+			return;
+		}
+		sendToVisualEditor('save-result', {ok, message});
+	}
+
+	/**
+	 * 关闭可视化编辑器。
+	 * @param {boolean} [force] 为true时忽略未保存确认，直接关闭
+	 * @returns {boolean} 是否已关闭；用户在确认框中选择取消时返回false
+	 */
+	function requestCloseVisualEditor(force) {
+		if (el.visualEditor.hidden) {
+			return true;
+		}
+		if (!force && visualEditor.dirty &&
+			!window.confirm('编辑器中的修改还没有保存，确定关闭吗？')) {
+			return false;
+		}
+		el.visualEditor.hidden = true;
+		el.visualEditorFrame.src = 'about:blank';
+		visualEditor.tabId = null;
+		visualEditor.pageIndex = 0;
+		visualEditor.frameReady = false;
+		visualEditor.pendingLoad = null;
+		visualEditor.originalXml = '';
+		visualEditor.dirty = false;
+		el.visualEditorStatus.textContent = '';
+		el.visualEditorTitle.textContent = '可视化编辑';
+		el.btnVisualEdit.disabled = false;
+		return true;
+	}
+
+	/**
 	 * 打开或关闭历史记录清单。
 	 * @returns {Promise<void>} 处理结束
 	 */
@@ -912,6 +1202,12 @@
 			return;
 		}
 		if (event.key === 'Escape') {
+			// 可视化编辑器是模态层，优先响应Esc关闭
+			if (!el.visualEditor.hidden) {
+				event.preventDefault();
+				requestCloseVisualEditor();
+				return;
+			}
 			hideMenu();
 			hideHistory();
 			hideToast();
@@ -966,6 +1262,8 @@
 		el.btnSave.addEventListener('click', saveCurrent);
 		el.btnSaveAs.addEventListener('click', saveCurrentAs);
 		el.btnConvert.addEventListener('click', convertCurrent);
+		el.btnVisualEdit.addEventListener('click', openVisualEditor);
+		el.visualEditorClose.addEventListener('click', () => requestCloseVisualEditor());
 		el.btnPng.addEventListener('click', exportPng);
 		el.btnMenu.addEventListener('click', (event) => {
 			event.stopPropagation();
@@ -1007,6 +1305,7 @@
 			renderNow();
 		});
 		window.addEventListener('message', onPreviewMessage);
+		window.addEventListener('message', handleVisualEditorMessage);
 		window.addEventListener('keydown', onKeyDown);
 		window.addEventListener('dragover', onDragOver);
 		window.addEventListener('drop', onDrop);

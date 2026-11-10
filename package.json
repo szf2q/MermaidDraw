@@ -31,6 +31,32 @@
       "package.json"
     ],
     "asar": true,
+    "fileAssociations": [
+      {
+        "ext": "mmd",
+        "name": "Mermaid Diagram",
+        "description": "Mermaid图表文件",
+        "role": "Editor"
+      },
+      {
+        "ext": "mermaid",
+        "name": "Mermaid Diagram",
+        "description": "Mermaid图表文件",
+        "role": "Editor"
+      },
+      {
+        "ext": "drawio",
+        "name": "Drawio Diagram",
+        "description": "Drawio图表文件",
+        "role": "Editor"
+      },
+      {
+        "ext": "dio",
+        "name": "Drawio Diagram",
+        "description": "Drawio图表文件",
+        "role": "Editor"
+      }
+    ],
     "win": {
       "signAndEditExecutable": false,
       "target": [

@@ -99,6 +99,27 @@ function showMainWindow() {
 }
 
 /**
+ * 把外部传入的文件交给主窗口打开。
+ * 双击文件、右键菜单、第二实例与macOS的open-file事件都走这里：
+ * 窗口已加载完成时直接发给渲染进程，否则暂存到did-finish-load后再发送。
+ * @param {string} filePath 文件路径
+ */
+function openExternalFile(filePath) {
+	const resolved = path.resolve(filePath);
+	// app未就绪时（macOS双击启动）不能创建窗口，先记下来，等whenReady后再打开
+	if (!app.isReady()) {
+		pendingOpenPath = resolved;
+		return;
+	}
+	if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isLoading()) {
+		mainWindow.webContents.send('file:open', resolved);
+	} else {
+		pendingOpenPath = resolved;
+	}
+	showMainWindow();
+}
+
+/**
  * 读取文本文件并校验大小。
  * @param {string} filePath 文件路径
  * @returns {Promise<{ok: boolean, content?: string, error?: string}>} 读取结果
@@ -362,6 +383,39 @@ async function getLastOpenDir() {
 }
 
 /**
+ * 保存应用内可视化编辑器回写的drawio内容。
+ * 已有路径直接覆盖；未保存过的新内容弹另存为对话框补一个路径。
+ * @param {{path?: string|null, name?: string, xml?: string}} payload 保存参数
+ * @returns {Promise<{ok: boolean, filePath?: string, canceled?: boolean, error?: string}>} 保存结果
+ */
+async function handleSaveDrawio(payload) {
+	try {
+		const xml = String((payload && payload.xml) || '');
+		if (!xml.trim()) {
+			return {ok: false, error: '编辑器没有返回可保存的内容'};
+		}
+		let outPath = payload && payload.path ? payload.path : null;
+		if (!outPath) {
+			const baseName = sanitizeFileBase((payload && payload.name) || 'untitled');
+			const saveResult = await dialog.showSaveDialog(mainWindow, {
+				title: '保存编辑结果',
+				defaultPath: path.join(app.getPath('documents'), `${baseName}.drawio`),
+				filters: [{name: 'Drawio文件', extensions: ['drawio']}]
+			});
+			if (saveResult.canceled || !saveResult.filePath) {
+				return {ok: false, canceled: true};
+			}
+			outPath = saveResult.filePath;
+		}
+		await fs.promises.writeFile(outPath, xml, 'utf8');
+		await addHistoryEntry(outPath);
+		return {ok: true, filePath: outPath};
+	} catch (error) {
+		return {ok: false, error: error.message};
+	}
+}
+
+/**
  * 注册渲染进程IPC。
  */
 function registerIpc() {
@@ -453,6 +507,10 @@ function registerIpc() {
 
 	ipcMain.handle('convert:drawio', async (event, payload) => handleConvertToDrawio(payload));
 	ipcMain.handle('export:png', async (event, payload) => handleExportPng(payload));
+
+	// 应用内离线可视化编辑器把修改后的图形回写到本地文件
+	ipcMain.handle('drawio:save', async (event, payload) => handleSaveDrawio(payload));
+
 	ipcMain.handle('menu:install', async () => registerContextMenu({exe: process.execPath, appRoot: app.isPackaged ? null : getAppRoot()}));
 	ipcMain.handle('menu:uninstall', async () => unregisterContextMenu());
 	ipcMain.handle('menu:status', async () => ({registered: isContextMenuRegistered()}));
@@ -538,9 +596,17 @@ if (!gotLock) {
 	app.on('second-instance', (event, argv) => {
 		const forwarded = parseCliArgs(getBusinessArgs(argv));
 		if (forwarded.mode === 'preview' && forwarded.file) {
-			pendingOpenPath = path.resolve(forwarded.file);
+			// 双击文件时系统会启动新实例，这里把文件转交给已运行的窗口
+			openExternalFile(forwarded.file);
+			return;
 		}
 		showMainWindow();
+	});
+
+	// macOS通过Finder打开文件时不走命令行参数，而是触发open-file事件，需在ready之前注册
+	app.on('open-file', (event, filePath) => {
+		event.preventDefault();
+		openExternalFile(filePath);
 	});
 
 	app.whenReady().then(async () => {
@@ -549,12 +615,7 @@ if (!gotLock) {
 		if (needsWindow) {
 			mainWindow = createMainWindow();
 			if (cliOptions.mode === 'preview' && cliOptions.file) {
-				pendingOpenPath = path.resolve(cliOptions.file);
-				// 窗口可能已加载完成，补充一次发送避免错过did-finish-load
-				if (!mainWindow.webContents.isLoading()) {
-					mainWindow.webContents.send('file:open', pendingOpenPath);
-					pendingOpenPath = null;
-				}
+				openExternalFile(cliOptions.file);
 			}
 			return;
 		}

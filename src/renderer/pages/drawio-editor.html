@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+	<meta charset="utf-8">
+	<title>Drawio可视化编辑</title>
+	<style>
+		html, body {
+			margin: 0;
+			height: 100%;
+			background: #ffffff;
+			overflow: hidden;
+			font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+			user-select: none;
+		}
+		#toolbar {
+			position: absolute;
+			left: 0;
+			right: 0;
+			top: 0;
+			height: 40px;
+			display: flex;
+			align-items: center;
+			gap: 6px;
+			padding: 0 10px;
+			box-sizing: border-box;
+			background: #fafbfc;
+			border-bottom: 1px solid #e5e6eb;
+			white-space: nowrap;
+			overflow: hidden;
+		}
+		#toolbar button {
+			height: 26px;
+			padding: 0 10px;
+			font-size: 12px;
+			color: #1f2329;
+			background: #ffffff;
+			border: 1px solid #d0d3d9;
+			border-radius: 4px;
+			cursor: pointer;
+			flex: 0 0 auto;
+		}
+		#toolbar button:hover:not(:disabled) {
+			border-color: #3370ff;
+			color: #3370ff;
+		}
+		#toolbar button:disabled {
+			color: #b7b9bf;
+			cursor: default;
+			background: #f5f6f7;
+		}
+		#toolbar button.primary {
+			color: #ffffff;
+			background: #3370ff;
+			border-color: #3370ff;
+		}
+		#toolbar button.primary:hover:not(:disabled) {
+			background: #285ce0;
+			color: #ffffff;
+		}
+		#toolbar .divider {
+			width: 1px;
+			height: 18px;
+			background: #e0e2e7;
+			flex: 0 0 auto;
+		}
+		#status {
+			flex: 1 1 auto;
+			min-width: 0;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			font-size: 12px;
+			color: #646a73;
+			text-align: right;
+			padding: 0 4px;
+		}
+		#canvas-wrap {
+			position: absolute;
+			left: 0;
+			right: 0;
+			top: 40px;
+			bottom: 0;
+			overflow: hidden;
+			background: #ffffff;
+		}
+		#canvas {
+			position: absolute;
+			left: 0;
+			top: 0;
+			width: 100%;
+			height: 100%;
+			/* viewer会在内容超出时把容器改成auto，这里强制隐藏，平移由编辑器自身控制 */
+			overflow: hidden !important;
+			background: #ffffff;
+		}
+		#canvas svg {
+			display: block;
+			width: 100% !important;
+			height: 100% !important;
+			min-width: 0 !important;
+			min-height: 0 !important;
+		}
+		#error {
+			position: absolute;
+			left: 12px;
+			right: 12px;
+			bottom: 12px;
+			padding: 10px 12px;
+			background: #fff1f0;
+			border: 1px solid #ffa39e;
+			color: #a8071a;
+			font-size: 13px;
+			line-height: 1.6;
+			border-radius: 4px;
+			white-space: pre-wrap;
+			z-index: 10;
+		}
+	</style>
+	<script>
+		// drawio内核加载时读取这些全局路径，指向本地vendor以避免联网请求样式与模具。
+		window.STYLE_PATH = 'app://app/vendor/drawio/styles';
+		window.STENCIL_PATH = 'app://app/vendor/drawio/stencils';
+		window.SHAPES_PATH = 'app://app/vendor/drawio/shapes';
+		window.PROXY_URL = '';
+		window.mxLoadStylesheets = false;
+		window.mxBasePath = 'app://app/vendor/drawio/mxgraph/';
+	</script>
+</head>
+<body>
+	<div id="toolbar">
+		<button type="button" id="btn-rect" title="在视图中央插入矩形">矩形</button>
+		<button type="button" id="btn-round" title="在视图中央插入圆角矩形">圆角矩形</button>
+		<button type="button" id="btn-ellipse" title="在视图中央插入椭圆">椭圆</button>
+		<button type="button" id="btn-text" title="在视图中央插入文本">文本</button>
+		<span class="divider"></span>
+		<button type="button" id="btn-connect" title="把选中的两个图形用箭头连接" disabled>连线</button>
+		<button type="button" id="btn-delete" title="删除选中的图形" disabled>删除</button>
+		<span class="divider"></span>
+		<button type="button" id="btn-undo" title="撤销上一次修改" disabled>撤销</button>
+		<button type="button" id="btn-redo" title="重做被撤销的修改" disabled>重做</button>
+		<span class="divider"></span>
+		<button type="button" id="btn-zoom-out" title="缩小视图">缩小</button>
+		<button type="button" id="btn-zoom-in" title="放大视图">放大</button>
+		<button type="button" id="btn-actual" title="恢复到100%缩放">100%</button>
+		<button type="button" id="btn-fit" title="让全部内容适应窗口">适应</button>
+		<span class="divider"></span>
+		<span id="status">正在加载编辑器…</span>
+		<button type="button" id="btn-save" class="primary" title="保存到本地文件">保存</button>
+	</div>
+	<div id="canvas-wrap"><div id="canvas"></div></div>
+	<div id="error" hidden></div>
+	<script src="../../../vendor/drawio/viewer-static.min.js"></script>
+	<script src="drawio-editor.js"></script>
+</body>
+</html>

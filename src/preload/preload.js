@@ -63,6 +63,14 @@ contextBridge.exposeInMainWorld('api', {
 		return ipcRenderer.invoke('export:png', payload);
 	},
 	/**
+	 * 把应用内可视化编辑器回写的drawio内容保存到本地文件。
+	 * @param {{path?: string|null, name?: string, xml: string}} payload 保存参数
+	 * @returns {Promise<{ok: boolean, filePath?: string, canceled?: boolean, error?: string}>} 保存结果
+	 */
+	saveDrawio(payload) {
+		return ipcRenderer.invoke('drawio:save', payload);
+	},
+	/**
 	 * 安装资源管理器右键菜单。
 	 * @returns {Promise<{ok: boolean, message: string}>} 结果
 	 */

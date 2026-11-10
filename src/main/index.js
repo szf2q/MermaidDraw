@@ -99,6 +99,27 @@ function showMainWindow() {
 }
 
 /**
+ * 把外部传入的文件交给主窗口打开。
+ * 双击文件、右键菜单、第二实例与macOS的open-file事件都走这里：
+ * 窗口已加载完成时直接发给渲染进程，否则暂存到did-finish-load后再发送。
+ * @param {string} filePath 文件路径
+ */
+function openExternalFile(filePath) {
+	const resolved = path.resolve(filePath);
+	// app未就绪时（macOS双击启动）不能创建窗口，先记下来，等whenReady后再打开
+	if (!app.isReady()) {
+		pendingOpenPath = resolved;
+		return;
+	}
+	if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isLoading()) {
+		mainWindow.webContents.send('file:open', resolved);
+	} else {
+		pendingOpenPath = resolved;
+	}
+	showMainWindow();
+}
+
+/**
  * 读取文本文件并校验大小。
  * @param {string} filePath 文件路径
  * @returns {Promise<{ok: boolean, content?: string, error?: string}>} 读取结果
@@ -575,9 +596,17 @@ if (!gotLock) {
 	app.on('second-instance', (event, argv) => {
 		const forwarded = parseCliArgs(getBusinessArgs(argv));
 		if (forwarded.mode === 'preview' && forwarded.file) {
-			pendingOpenPath = path.resolve(forwarded.file);
+			// 双击文件时系统会启动新实例，这里把文件转交给已运行的窗口
+			openExternalFile(forwarded.file);
+			return;
 		}
 		showMainWindow();
+	});
+
+	// macOS通过Finder打开文件时不走命令行参数，而是触发open-file事件，需在ready之前注册
+	app.on('open-file', (event, filePath) => {
+		event.preventDefault();
+		openExternalFile(filePath);
 	});
 
 	app.whenReady().then(async () => {
@@ -586,12 +615,7 @@ if (!gotLock) {
 		if (needsWindow) {
 			mainWindow = createMainWindow();
 			if (cliOptions.mode === 'preview' && cliOptions.file) {
-				pendingOpenPath = path.resolve(cliOptions.file);
-				// 窗口可能已加载完成，补充一次发送避免错过did-finish-load
-				if (!mainWindow.webContents.isLoading()) {
-					mainWindow.webContents.send('file:open', pendingOpenPath);
-					pendingOpenPath = null;
-				}
+				openExternalFile(cliOptions.file);
 			}
 			return;
 		}

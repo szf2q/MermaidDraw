@@ -11,6 +11,20 @@ const TOOL_KEY = 'MermaidDraw';
 /** 需要注册右键菜单的扩展名 */
 const EXTENSIONS = ['.mmd', '.mermaid', '.drawio', '.dio'];
 
+/** 默认打开方式备份根键：安装前保存原有默认值，卸载时还原 */
+const BACKUP_ROOT = `HKCU\\Software\\${TOOL_KEY}\\DefaultAssociation`;
+
+/**
+ * 各扩展名对应的ProgID、显示名与文件类型描述。
+ * @type {Array<{ext: string, progId: string, label: string}>}
+ */
+const FILE_TYPES = [
+	{ext: '.mmd', progId: `${TOOL_KEY}.mmd`, label: 'Mermaid图表文件'},
+	{ext: '.mermaid', progId: `${TOOL_KEY}.mermaid`, label: 'Mermaid图表文件'},
+	{ext: '.drawio', progId: `${TOOL_KEY}.drawio`, label: 'Drawio图表文件'},
+	{ext: '.dio', progId: `${TOOL_KEY}.dio`, label: 'Drawio图表文件'}
+];
+
 /**
  * 执行reg.exe命令。
  * @param {string[]} args 参数数组，避免shell拼接
@@ -46,6 +60,34 @@ function setValue(key, name, value) {
 }
 
 /**
+ * 读取键的默认值，用于识别当前默认打开方式。
+ * @param {string} key 注册表键
+ * @returns {string|null} 默认值文本；键或默认值不存在时返回null
+ */
+function readDefaultValue(key) {
+	try {
+		const output = runReg(['query', key, '/ve']);
+		const match = output.match(/REG_(?:EXPAND_)?SZ\s+([^\r\n]*)/);
+		return match ? match[1].trim() : null;
+	} catch (error) {
+		// 键不存在时reg返回非零码，按"没有默认值"处理
+		return null;
+	}
+}
+
+/**
+ * 删除整个注册表键，键不存在时静默忽略。
+ * @param {string} key 注册表键
+ */
+function deleteKeyQuietly(key) {
+	try {
+		runReg(['delete', key, '/f']);
+	} catch (error) {
+		// 未注册过该键属正常情况，无需上报
+	}
+}
+
+/**
  * 生成菜单项命令，开发态需要附带应用目录参数。
  * @param {string} exe 可执行文件路径
  * @param {string|null} appRoot 应用根目录，打包后为null
@@ -76,13 +118,15 @@ function verbsFor(ext) {
 }
 
 /**
- * 安装右键菜单与"打开方式"候选。
+ * 安装右键菜单、文件关联与"打开方式"候选。
+ * 同时把本工具写为这些扩展名的默认打开方式，使双击文件即可打开；
+ * 原有默认值会先备份，卸载时可还原。
  * @param {{exe: string, appRoot: string|null}} options 可执行文件与应用根目录
  * @returns {{ok: boolean, message: string}} 安装结果
  */
 function registerContextMenu(options) {
 	if (process.platform !== 'win32') {
-		return {ok: false, message: '右键菜单仅支持Windows系统'};
+		return {ok: false, message: '右键菜单与文件关联仅支持Windows系统'};
 	}
 	const {exe, appRoot} = options;
 	try {
@@ -95,20 +139,27 @@ function registerContextMenu(options) {
 			}
 		}
 
-		// 额外注册ProgID并挂到OpenWithProgids，让"打开方式"里也能选到本工具
-		const progIds = [
-			{ext: '.mmd', progId: `${TOOL_KEY}.mmd`, label: 'Mermaid图表文件'},
-			{ext: '.drawio', progId: `${TOOL_KEY}.drawio`, label: 'Drawio图表文件'}
-		];
-		for (const item of progIds) {
+		for (const item of FILE_TYPES) {
 			const progKey = `HKCU\\Software\\Classes\\${item.progId}`;
+			const extKey = `HKCU\\Software\\Classes\\${item.ext}`;
 			setDefault(progKey, item.label);
 			setDefault(`${progKey}\\DefaultIcon`, `${exe},0`);
 			setDefault(`${progKey}\\shell\\open\\command`, buildCommand(exe, appRoot, '--preview'));
-			const openWithKey = `HKCU\\Software\\Classes\\${item.ext}\\OpenWithProgids`;
-			setValue(openWithKey, item.progId, '');
+			// 挂到OpenWithProgids，让"打开方式"列表里也能选到本工具
+			setValue(`${extKey}\\OpenWithProgids`, item.progId, '');
+
+			// 记录原默认打开方式后改为本工具；已经是本工具时保留原备份，避免备份被自身覆盖
+			const current = readDefaultValue(extKey);
+			if (current !== item.progId) {
+				if (current) {
+					setDefault(`${BACKUP_ROOT}\\${item.ext}`, current);
+				} else {
+					deleteKeyQuietly(`${BACKUP_ROOT}\\${item.ext}`);
+				}
+				setDefault(extKey, item.progId);
+			}
 		}
-		return {ok: true, message: `已注册${EXTENSIONS.join('、')}的右键菜单`};
+		return {ok: true, message: `已注册${EXTENSIONS.join('、')}的右键菜单，并设为默认打开方式`};
 	} catch (error) {
 		// 注册中途失败时尝试回滚，避免留下半套菜单
 		try {
@@ -121,12 +172,12 @@ function registerContextMenu(options) {
 }
 
 /**
- * 删除右键菜单与ProgID注册。
+ * 删除右键菜单、文件关联与ProgID注册，并还原安装前的默认打开方式。
  * @returns {{ok: boolean, message: string}} 卸载结果
  */
 function unregisterContextMenu() {
 	if (process.platform !== 'win32') {
-		return {ok: false, message: '右键菜单仅支持Windows系统'};
+		return {ok: false, message: '右键菜单与文件关联仅支持Windows系统'};
 	}
 	const errors = [];
 	for (const ext of EXTENSIONS) {
@@ -140,26 +191,32 @@ function unregisterContextMenu() {
 			}
 		}
 	}
-	for (const progId of [`${TOOL_KEY}.mmd`, `${TOOL_KEY}.drawio`]) {
-		try {
-			runReg(['delete', `HKCU\\Software\\Classes\\${progId}`, '/f']);
-		} catch (error) {
-			// 同上，未注册时删除失败无需上报
+	for (const item of FILE_TYPES) {
+		const extKey = `HKCU\\Software\\Classes\\${item.ext}`;
+		// 仅在默认值仍指向本工具时还原，避免覆盖用户卸载前自行改成的其他打开方式
+		if (readDefaultValue(extKey) === item.progId) {
+			const backup = readDefaultValue(`${BACKUP_ROOT}\\${item.ext}`);
+			if (backup) {
+				setDefault(extKey, backup);
+			} else {
+				try {
+					runReg(['delete', extKey, '/ve', '/f']);
+				} catch (error) {
+					// 原本没有默认值，删除失败也无需上报
+				}
+			}
 		}
-	}
-	try {
-		runReg(['delete', `HKCU\\Software\\Classes\\.mmd\\OpenWithProgids`, '/v', `${TOOL_KEY}.mmd`, '/f']);
-	} catch (error) {
-		errors.push(error.message);
-	}
-	try {
-		runReg(['delete', `HKCU\\Software\\Classes\\.drawio\\OpenWithProgids`, '/v', `${TOOL_KEY}.drawio`, '/f']);
-	} catch (error) {
-		errors.push(error.message);
+		deleteKeyQuietly(`${BACKUP_ROOT}\\${item.ext}`);
+		deleteKeyQuietly(`HKCU\\Software\\Classes\\${item.progId}`);
+		try {
+			runReg(['delete', `${extKey}\\OpenWithProgids`, '/v', item.progId, '/f']);
+		} catch (error) {
+			errors.push(error.message);
+		}
 	}
 	return {
 		ok: true,
-		message: errors.length === 0 ? '已移除右键菜单' : `已移除右键菜单，部分"打开方式"注册项不存在`
+		message: errors.length === 0 ? '已移除右键菜单与文件关联' : '已移除右键菜单与文件关联，部分"打开方式"注册项不存在'
 	};
 }
 

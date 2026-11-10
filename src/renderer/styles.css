@@ -221,6 +221,50 @@ label.check {
 	display: none;
 }
 
+/* 源码区与预览区之间的分隔条：本身透明，悬停或拖动时显示高亮竖线 */
+.splitter {
+	flex: 0 0 7px;
+	position: relative;
+	cursor: col-resize;
+	touch-action: none;
+}
+
+.splitter::before {
+	content: "";
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: 3px;
+	width: 2px;
+	background: transparent;
+	transition: background 0.15s ease;
+}
+
+.splitter:hover::before,
+.splitter.active::before {
+	background: #94bfff;
+}
+
+.splitter.active::before {
+	background: #1668dc;
+}
+
+/* drawio模式没有源码区，分隔条一并隐藏 */
+.app.mode-drawio .splitter {
+	display: none;
+}
+
+/* 拖动分隔条时锁定光标并禁用iframe的指针事件，
+   否则鼠标移到右侧预览iframe上会丢失后续移动事件，拖动直接中断 */
+body.resizing {
+	cursor: col-resize;
+	user-select: none;
+}
+
+body.resizing iframe {
+	pointer-events: none;
+}
+
 .pane-head {
 	display: flex;
 	align-items: center;

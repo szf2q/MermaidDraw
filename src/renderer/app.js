@@ -10,6 +10,12 @@
 	/** 提示条自动消失时间 */
 	const TOAST_DURATION = 5000;
 
+	/** 拖动分隔条时源码区允许的最小宽度（像素） */
+	const MIN_EDITOR_WIDTH = 280;
+
+	/** 拖动分隔条时预览区保留的最小宽度（像素），避免预览被挤到不可用 */
+	const MIN_PREVIEW_WIDTH = 320;
+
 	/** 页面元素缓存 */
 	const el = {};
 
@@ -55,6 +61,15 @@
 	let toastTimer = null;
 
 	/**
+	 * @typedef {Object} SplitterDrag
+	 * @property {number} startX 按下时的鼠标横坐标
+	 * @property {number} startWidth 按下时源码区宽度
+	 */
+
+	/** 分隔条拖动状态，未拖动时为null */
+	let splitterDrag = null;
+
+	/**
 	 * @typedef {Object} VisualEditorState
 	 * @property {number|null} tabId 正在可视化编辑的标签id
 	 * @property {number} pageIndex 正在编辑的页面下标
@@ -81,7 +96,7 @@
 			'page-group', 'page-select', 'btn-convert', 'btn-visual-edit', 'btn-png', 'theme-select', 'scale-select',
 			'transparent', 'zoom-select', 'btn-menu', 'editor', 'preview', 'preview-title', 'preview-meta', 'status-text',
 			'status-size', 'toast', 'toast-text', 'toast-action', 'history-popup', 'history-list', 'history-clear',
-			'menu-popup', 'menu-install', 'menu-uninstall', 'menu-about',
+			'menu-popup', 'menu-install', 'menu-uninstall', 'menu-about', 'editor-pane', 'splitter',
 			'visual-editor', 'visual-editor-title', 'visual-editor-status', 'visual-editor-close', 'visual-editor-frame'
 		];
 		ids.forEach((id) => {
@@ -1315,6 +1330,79 @@
 	}
 
 	/**
+	 * 应用源码区宽度，并收敛到允许范围内。
+	 * 上限按容器宽度减去预览区最小宽度计算，保证两侧都可用。
+	 * @param {number} width 期望宽度（像素）
+	 */
+	function applyEditorWidth(width) {
+		const container = el.editorPane.parentElement;
+		const maxWidth = Math.max(
+			MIN_EDITOR_WIDTH,
+			container.clientWidth - MIN_PREVIEW_WIDTH - el.splitter.offsetWidth
+		);
+		const clamped = Math.min(Math.max(width, MIN_EDITOR_WIDTH), maxWidth);
+		el.editorPane.style.width = `${clamped}px`;
+	}
+
+	/**
+	 * 按下分隔条，进入拖动状态。
+	 * 使用指针捕获，保证鼠标移出分隔条后仍能持续收到移动事件。
+	 * @param {PointerEvent} event 指针事件
+	 */
+	function onSplitterDown(event) {
+		if (event.button !== 0) {
+			return;
+		}
+		splitterDrag = {
+			startX: event.clientX,
+			startWidth: el.editorPane.getBoundingClientRect().width
+		};
+		el.splitter.classList.add('active');
+		// 拖动期间禁用iframe的指针事件，否则鼠标移到预览区上会丢失后续事件
+		document.body.classList.add('resizing');
+		el.splitter.setPointerCapture(event.pointerId);
+		event.preventDefault();
+	}
+
+	/**
+	 * 拖动分隔条，按水平位移实时调整源码区宽度。
+	 * @param {PointerEvent} event 指针事件
+	 */
+	function onSplitterMove(event) {
+		if (!splitterDrag) {
+			return;
+		}
+		applyEditorWidth(splitterDrag.startWidth + (event.clientX - splitterDrag.startX));
+	}
+
+	/**
+	 * 结束拖动并清理临时状态。
+	 * @param {PointerEvent} event 指针事件
+	 */
+	function onSplitterUp(event) {
+		if (!splitterDrag) {
+			return;
+		}
+		splitterDrag = null;
+		el.splitter.classList.remove('active');
+		document.body.classList.remove('resizing');
+		if (el.splitter.hasPointerCapture(event.pointerId)) {
+			el.splitter.releasePointerCapture(event.pointerId);
+		}
+	}
+
+	/**
+	 * 窗口尺寸变化后重新收敛源码区宽度，避免窗口变窄时预览区被挤没。
+	 */
+	function onWindowResize() {
+		// 用记录下来的像素宽度重新计算；直接量取元素宽度在drawio模式下（源码区隐藏）会得到0
+		const width = parseFloat(el.editorPane.style.width);
+		if (Number.isFinite(width)) {
+			applyEditorWidth(width);
+		}
+	}
+
+	/**
 	 * 绑定全部界面事件。
 	 */
 	function bindEvents() {
@@ -1374,6 +1462,13 @@
 		window.addEventListener('keydown', onKeyDown);
 		window.addEventListener('dragover', onDragOver);
 		window.addEventListener('drop', onDrop);
+		// 分隔条拖动：指针捕获保证鼠标移到预览iframe上仍能继续拖动
+		el.splitter.addEventListener('pointerdown', onSplitterDown);
+		el.splitter.addEventListener('pointermove', onSplitterMove);
+		el.splitter.addEventListener('pointerup', onSplitterUp);
+		el.splitter.addEventListener('pointercancel', onSplitterUp);
+		el.splitter.addEventListener('lostpointercapture', onSplitterUp);
+		window.addEventListener('resize', onWindowResize);
 		// iframe内部不会把拖拽事件冒泡到父窗口，每次加载完成后重新接管，保证整个界面都能接收文件
 		el.preview.addEventListener('load', () => attachFrameDropHandlers(el.preview));
 		el.visualEditorFrame.addEventListener('load', () => attachFrameDropHandlers(el.visualEditorFrame));

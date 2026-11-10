@@ -1,8 +1,8 @@
 {
-  "name": "mermaid-draw",
+  "name": "tuyu",
   "version": "1.0.0",
   "private": true,
-  "description": "Mermaid与drawio图表的查看、转换与PNG导出工具",
+  "description": "图语：Mermaid与drawio图表的查看、转换与PNG导出工具",
   "main": "src/main/index.js",
   "author": "sunzhenfeng",
   "license": "UNLICENSED",
@@ -19,8 +19,8 @@
     "electron-builder": "26.18.0"
   },
   "build": {
-    "appId": "com.local.mermaiddraw",
-    "productName": "MermaidDraw",
+    "appId": "com.local.tuyu",
+    "productName": "图语",
     "electronDist": "node_modules/electron/dist",
     "directories": {
       "output": "dist"

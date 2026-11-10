@@ -1405,6 +1405,32 @@
 	}
 
 	/**
+	 * 把当前选择的字号应用到源码编辑区。
+	 */
+	function applyEditorFontSize() {
+		el.editor.style.fontSize = `${el.editorFontSize.value}px`;
+	}
+
+	/**
+	 * 读取并恢复上次保存的源码编辑区字号。
+	 * @returns {Promise<void>} 恢复结束
+	 */
+	async function restoreEditorFontSize() {
+		const result = await window.api.getPreferences();
+		const size = result && result.ok ? Number(result.editorFontSize) : NaN;
+		if (!Number.isFinite(size)) {
+			return;
+		}
+		// 只接受下拉框中存在的值，避免历史值不在选项里导致显示与选择不一致
+		const value = String(size);
+		if (!Array.from(el.editorFontSize.options).some((option) => option.value === value)) {
+			return;
+		}
+		el.editorFontSize.value = value;
+		applyEditorFontSize();
+	}
+
+	/**
 	 * 绑定全部界面事件。
 	 */
 	function bindEvents() {
@@ -1452,8 +1478,9 @@
 		});
 		el.zoomSelect.addEventListener('change', applyZoom);
 		el.editorFontSize.addEventListener('change', () => {
-			// 只影响源码编辑区的显示，不改变保存的文件内容
-			el.editor.style.fontSize = `${el.editorFontSize.value}px`;
+			// 只影响源码编辑区的显示，不改变保存的文件内容；同时写入设置供下次启动恢复
+			applyEditorFontSize();
+			window.api.setEditorFontSize(Number(el.editorFontSize.value));
 		});
 		el.pageSelect.addEventListener('change', () => {
 			const tab = activeTab();
@@ -1496,6 +1523,8 @@
 		cacheElements();
 		bindEvents();
 		state.theme = el.themeSelect.value;
+		// 先恢复字号偏好，避免启动瞬间用默认字号渲染一帧
+		await restoreEditorFontSize();
 		const tab = createTab({mode: 'mermaid'});
 		state.activeTabId = tab.id;
 		applyTabToUi(tab);

@@ -114,6 +114,21 @@ contextBridge.exposeInMainWorld('api', {
 		return ipcRenderer.invoke('history:clear');
 	},
 	/**
+	 * 获取界面偏好设置。
+	 * @returns {Promise<{ok: boolean, editorFontSize: number|null}>} 偏好；未设置时字号为null
+	 */
+	getPreferences() {
+		return ipcRenderer.invoke('prefs:get');
+	},
+	/**
+	 * 保存源码编辑区字号，供下次启动恢复。
+	 * @param {number} size 字号（像素）
+	 * @returns {Promise<{ok: boolean, error?: string}>} 结果
+	 */
+	setEditorFontSize(size) {
+		return ipcRenderer.invoke('prefs:setEditorFontSize', size);
+	},
+	/**
 	 * 获取应用信息。
 	 * @returns {Promise<{version: string, packaged: boolean, platform: string}>} 信息
 	 */

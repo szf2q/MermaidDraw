@@ -22,6 +22,12 @@ const SETTINGS_FILE_NAME = 'settings.json';
 /** 历史打开记录最多保留的条数 */
 const HISTORY_LIMIT = 15;
 
+/** 源码编辑区字号允许的最小值（像素），用于校验渲染进程写入的偏好 */
+const FONT_SIZE_MIN = 8;
+
+/** 源码编辑区字号允许的最大值（像素） */
+const FONT_SIZE_MAX = 48;
+
 /** 历史记录写入串行队列，避免多个文件同时打开时读改写互相覆盖 */
 let historyWriteChain = Promise.resolve();
 
@@ -383,6 +389,34 @@ async function getLastOpenDir() {
 }
 
 /**
+ * 读取界面偏好设置。
+ * @returns {Promise<{editorFontSize: number|null}>} 偏好；未设置或值非法时editorFontSize为null
+ */
+async function readPreferences() {
+	const settings = await readSettings();
+	const size = Number(settings.editorFontSize);
+	const valid = Number.isFinite(size) && size >= FONT_SIZE_MIN && size <= FONT_SIZE_MAX;
+	return {editorFontSize: valid ? size : null};
+}
+
+/**
+ * 保存源码编辑区字号，下次启动时恢复。
+ * 与历史记录共用同一条写入链，避免两次读改写并发执行时互相覆盖。
+ * @param {number} size 字号（像素）
+ * @returns {Promise<void>} 保存结束；写入失败只记录日志，不影响界面使用
+ */
+function setEditorFontSize(size) {
+	historyWriteChain = historyWriteChain.then(async () => {
+		const settings = await readSettings();
+		settings.editorFontSize = size;
+		await writeSettings(settings);
+	}).catch((error) => {
+		console.error(`保存字号设置失败: ${error.message}`);
+	});
+	return historyWriteChain;
+}
+
+/**
  * 保存应用内可视化编辑器回写的drawio内容。
  * 已有路径直接覆盖；未保存过的新内容弹另存为对话框补一个路径。
  * @param {{path?: string|null, name?: string, xml?: string}} payload 保存参数
@@ -473,6 +507,17 @@ function registerIpc() {
 	ipcMain.handle('history:list', async () => ({ok: true, items: await listHistory()}));
 	ipcMain.handle('history:clear', async () => {
 		await clearHistory();
+		return {ok: true};
+	});
+
+	// 界面偏好：目前只有源码编辑区字号，读取时已做范围校验
+	ipcMain.handle('prefs:get', async () => ({ok: true, ...(await readPreferences())}));
+	ipcMain.handle('prefs:setEditorFontSize', async (event, size) => {
+		const value = Number(size);
+		if (!Number.isFinite(value) || value < FONT_SIZE_MIN || value > FONT_SIZE_MAX) {
+			return {ok: false, error: '字号超出允许范围'};
+		}
+		await setEditorFontSize(value);
 		return {ok: true};
 	});
 

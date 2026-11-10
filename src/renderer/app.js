@@ -96,7 +96,7 @@
 			'page-group', 'page-select', 'btn-convert', 'btn-visual-edit', 'btn-png', 'theme-select', 'scale-select',
 			'transparent', 'zoom-select', 'btn-menu', 'editor', 'preview', 'preview-title', 'preview-meta', 'status-text',
 			'status-size', 'toast', 'toast-text', 'toast-action', 'history-popup', 'history-list', 'history-clear',
-			'menu-popup', 'menu-install', 'menu-uninstall', 'menu-about', 'editor-pane', 'splitter',
+			'menu-popup', 'menu-install', 'menu-uninstall', 'menu-about', 'editor-pane', 'splitter', 'editor-font-size',
 			'visual-editor', 'visual-editor-title', 'visual-editor-status', 'visual-editor-close', 'visual-editor-frame'
 		];
 		ids.forEach((id) => {
@@ -460,6 +460,8 @@
 		// 可视化编辑只对drawio页面有意义；mermaid在左侧源码编辑器中离线编辑并实时预览
 		el.btnVisualEdit.hidden = mode !== 'drawio';
 		el.btnVisualEdit.disabled = false;
+		// drawio模式不显示源码区，字号设置一并禁用，避免调了看不到效果
+		el.editorFontSize.disabled = mode === 'drawio';
 		loadPreview(mode);
 	}
 
@@ -1449,6 +1451,10 @@
 			}
 		});
 		el.zoomSelect.addEventListener('change', applyZoom);
+		el.editorFontSize.addEventListener('change', () => {
+			// 只影响源码编辑区的显示，不改变保存的文件内容
+			el.editor.style.fontSize = `${el.editorFontSize.value}px`;
+		});
 		el.pageSelect.addEventListener('change', () => {
 			const tab = activeTab();
 			if (!tab) {
